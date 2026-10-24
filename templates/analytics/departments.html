@@ -1,0 +1,151 @@
+{% extends "base.html" %}
+
+{% block title %}Departments | PULSE — Rajkot Municipal Corporation{% endblock %}
+
+{% block content %}
+<!-- Page Header -->
+<div class="d-flex flex-wrap justify-content-between align-items-center mb-4">
+    <div>
+        <h2 class="fw-bold mb-1" style="color: var(--pulse-brand);">Department Workload</h2>
+        <div class="text-muted small">Complaint distribution across all 15 operational branches of Rajkot Municipal Corporation.</div>
+    </div>
+    <div class="small text-muted">
+        Window: <strong>Past 7 Days</strong>
+    </div>
+</div>
+
+<!-- Departments Summary Table -->
+<div class="simple-card mb-4 p-0 overflow-hidden">
+    <div class="p-3 border-bottom bg-light d-flex justify-content-between align-items-center">
+        <h3 class="simple-card-title mb-0 fs-6">
+            <i class="bi bi-building"></i> All 15 Municipal Departments
+        </h3>
+        <span class="small text-muted">Sorted by open complaint volume</span>
+    </div>
+
+    <div class="table-responsive">
+        <table class="simple-table">
+            <thead>
+                <tr>
+                    <th>Department</th>
+                    <th>Branch Head</th>
+                    <th>Active Complaints</th>
+                    <th>Most Common Issue</th>
+                    <th>Status</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for dept in departments %}
+                <tr>
+                    <td>
+                        <div class="fw-bold text-dark d-flex align-items-center gap-2">
+                            <i class="bi {{ dept.icon }} text-primary"></i>
+                            <span>{{ dept.name }}</span>
+                        </div>
+                    </td>
+                    <td class="text-muted">{{ dept.head }}</td>
+                    <td>
+                        <strong class="text-dark fs-6">{{ dept.open_complaints }}</strong>
+                    </td>
+                    <td>
+                        <span class="text-secondary">{{ dept.top_issue }}</span>
+                    </td>
+                    <td>
+                        {% if dept.spike_active %}
+                        <span class="status-tag status-tag-urgent">🚨 Surge Active</span>
+                        {% else %}
+                        <span class="status-tag status-tag-success">Normal</span>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<!-- Most Frequent Issues This Week -->
+<div class="row g-4 mb-4">
+    <div class="col-lg-7">
+        <div class="simple-card h-100">
+            <div class="simple-card-header">
+                <h3 class="simple-card-title">
+                    <i class="bi bi-chat-left-text"></i> Most Common Issues Reported This Week
+                </h3>
+            </div>
+
+            <div class="d-flex flex-column gap-3">
+                {% for theme in top_themes %}
+                <div class="d-flex justify-content-between align-items-center pb-2 border-bottom">
+                    <div>
+                        <div class="fw-bold text-dark">{{ theme.name }}</div>
+                        <div class="text-muted small">{{ theme.dept }}</div>
+                    </div>
+                    <div class="text-end">
+                        <div class="fw-bold text-dark">{{ theme.count }} reports</div>
+                        {% if '+' in theme.trend %}
+                        <span class="small text-danger fw-semibold"><i class="bi bi-arrow-up-right"></i> {{ theme.trend }}</span>
+                        {% else %}
+                        <span class="small text-success fw-semibold"><i class="bi bi-arrow-down-right"></i> {{ theme.trend }}</span>
+                        {% endif %}
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+
+    <!-- Grievance Share -->
+    <div class="col-lg-5">
+        <div class="simple-card h-100">
+            <div class="simple-card-header">
+                <h3 class="simple-card-title">
+                    <i class="bi bi-pie-chart"></i> Complaint Share
+                </h3>
+            </div>
+
+            <div class="d-flex flex-column gap-3">
+                <div>
+                    <div class="d-flex justify-content-between small mb-1">
+                        <span>Drainage & Sewerage</span>
+                        <strong>27.2%</strong>
+                    </div>
+                    <div class="progress" style="height: 6px;"><div class="progress-bar bg-danger" style="width: 27.2%;"></div></div>
+                </div>
+
+                <div>
+                    <div class="d-flex justify-content-between small mb-1">
+                        <span>Roads & Potholes (Bandhkam)</span>
+                        <strong>20.9%</strong>
+                    </div>
+                    <div class="progress" style="height: 6px;"><div class="progress-bar bg-warning" style="width: 20.9%;"></div></div>
+                </div>
+
+                <div>
+                    <div class="d-flex justify-content-between small mb-1">
+                        <span>Solid Waste (Garbage)</span>
+                        <strong>16.9%</strong>
+                    </div>
+                    <div class="progress" style="height: 6px;"><div class="progress-bar bg-info" style="width: 16.9%;"></div></div>
+                </div>
+
+                <div>
+                    <div class="d-flex justify-content-between small mb-1">
+                        <span>Water Works Department</span>
+                        <strong>14.4%</strong>
+                    </div>
+                    <div class="progress" style="height: 6px;"><div class="progress-bar bg-primary" style="width: 14.4%;"></div></div>
+                </div>
+
+                <div>
+                    <div class="d-flex justify-content-between small mb-1">
+                        <span>Streetlights (Roshni)</span>
+                        <strong>11.2%</strong>
+                    </div>
+                    <div class="progress" style="height: 6px;"><div class="progress-bar bg-secondary" style="width: 11.2%;"></div></div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

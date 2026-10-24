@@ -1,0 +1,415 @@
+/* ==========================================================================
+   PULSE — Rajkot Municipal Corporation (RMC)
+   Ultra-Minimalist, Clean & Peaceful Design System
+   ========================================================================== */
+
+:root {
+    /* Refined Minimalist Palette */
+    --pulse-brand: #0f2b48;
+    --pulse-brand-light: #1e3a5f;
+    --pulse-accent: #2563eb;
+
+    /* Backgrounds & Canvas */
+    --pulse-bg: #f9fafb;
+    --pulse-card: #ffffff;
+    --pulse-subtle: #f3f4f6;
+
+    /* Borders */
+    --pulse-border: #e5e7eb;
+    --pulse-border-light: #f3f4f6;
+
+    /* Typography */
+    --pulse-text-main: #111827;
+    --pulse-text-sub: #4b5563;
+    --pulse-text-muted: #6b7280;
+    --pulse-text-faint: #9ca3af;
+
+    /* Status Colors */
+    --status-urgent-bg: #fef2f2;
+    --status-urgent-text: #b91c1c;
+    --status-urgent-border: #fecaca;
+
+    --status-warn-bg: #fffbeb;
+    --status-warn-text: #b45309;
+    --status-warn-border: #fde68a;
+
+    --status-ok-bg: #f0fdf4;
+    --status-ok-text: #15803d;
+    --status-ok-border: #bbf7d0;
+
+    --radius-sm: 6px;
+    --radius-md: 10px;
+    --radius-lg: 14px;
+    --radius-pill: 9999px;
+}
+
+body {
+    font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    background-color: var(--pulse-bg);
+    color: var(--pulse-text-main);
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    letter-spacing: -0.01em;
+    -webkit-font-smoothing: antialiased;
+}
+
+.gujarati-text {
+    font-family: 'Noto Sans Gujarati', 'Plus Jakarta Sans', sans-serif;
+    line-height: 1.6;
+}
+
+/* Max Container Width */
+.pulse-container {
+    max-width: 1200px;
+    width: 100%;
+    margin-left: auto;
+    margin-right: auto;
+    padding-left: 1.5rem;
+    padding-right: 1.5rem;
+}
+
+@media (max-width: 768px) {
+    .pulse-container {
+        padding-left: 1rem;
+        padding-right: 1rem;
+    }
+}
+
+/* ==========================================================================
+   Minimalist Navigation Header
+   ========================================================================== */
+
+.pulse-nav-header {
+    background-color: #ffffff;
+    border-bottom: 1px solid var(--pulse-border);
+    position: sticky;
+    top: 0;
+    z-index: 1020;
+}
+
+.pulse-brand {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    text-decoration: none;
+    color: var(--pulse-text-main);
+    font-weight: 800;
+    font-size: 1.2rem;
+    letter-spacing: -0.02em;
+}
+
+.pulse-brand-badge {
+    width: 32px;
+    height: 32px;
+    background-color: var(--pulse-brand);
+    color: #ffffff;
+    border-radius: var(--radius-sm);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.95rem;
+}
+
+.pulse-nav-link {
+    color: var(--pulse-text-sub) !important;
+    font-weight: 500;
+    font-size: 0.88rem;
+    padding: 0.5rem 0.85rem !important;
+    border-radius: var(--radius-sm);
+    text-decoration: none;
+    transition: all 0.15s ease;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.pulse-nav-link:hover {
+    color: var(--pulse-text-main) !important;
+    background-color: var(--pulse-subtle);
+}
+
+.pulse-nav-link.active {
+    color: var(--pulse-brand) !important;
+    font-weight: 700;
+    background-color: var(--pulse-subtle);
+}
+
+/* Minimal User Disc */
+.user-avatar-disc {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    background-color: var(--pulse-brand);
+    color: #ffffff;
+    font-weight: 700;
+    font-size: 0.8rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+/* ==========================================================================
+   Clean Flat Cards & Surfaces
+   ========================================================================== */
+
+.simple-card {
+    background-color: var(--pulse-card);
+    border: 1px solid var(--pulse-border);
+    border-radius: var(--radius-md);
+    padding: 1.5rem;
+    margin-bottom: 1.5rem;
+}
+
+.simple-card-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding-bottom: 1rem;
+    margin-bottom: 1.25rem;
+    border-bottom: 1px solid var(--pulse-border-light);
+}
+
+.simple-card-title {
+    font-weight: 700;
+    font-size: 1.05rem;
+    color: var(--pulse-text-main);
+    margin: 0;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+/* ==========================================================================
+   Simple Big Stat Blocks
+   ========================================================================== */
+
+.stat-box {
+    background: #ffffff;
+    border: 1px solid var(--pulse-border);
+    border-radius: var(--radius-md);
+    padding: 1.25rem;
+}
+
+.stat-label {
+    font-size: 0.78rem;
+    color: var(--pulse-text-muted);
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    margin-bottom: 0.35rem;
+}
+
+.stat-value {
+    font-size: 2rem;
+    font-weight: 800;
+    line-height: 1;
+    color: var(--pulse-text-main);
+    letter-spacing: -0.03em;
+}
+
+/* ==========================================================================
+   Clean Complaint Feed List Items
+   ========================================================================== */
+
+.complaint-item {
+    background: #ffffff;
+    border: 1px solid var(--pulse-border);
+    border-radius: var(--radius-md);
+    padding: 1.15rem 1.25rem;
+    margin-bottom: 0.75rem;
+    transition: border-color 0.15s ease;
+}
+
+.complaint-item:hover {
+    border-color: #9ca3af;
+}
+
+.complaint-item.urgent-item {
+    border-left: 4px solid #ef4444;
+    background-color: #fefefe;
+}
+
+.complaint-quote {
+    font-size: 1rem;
+    font-weight: 600;
+    color: var(--pulse-text-main);
+    margin-bottom: 0.4rem;
+}
+
+.complaint-meta {
+    font-size: 0.82rem;
+    color: var(--pulse-text-muted);
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 12px;
+}
+
+/* ==========================================================================
+   Status Tags
+   ========================================================================== */
+
+.status-tag {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    padding: 0.25rem 0.65rem;
+    border-radius: var(--radius-pill);
+    line-height: 1;
+}
+
+.status-tag-urgent {
+    background-color: var(--status-urgent-bg);
+    color: var(--status-urgent-text);
+}
+
+.status-tag-normal {
+    background-color: var(--pulse-subtle);
+    color: var(--pulse-text-sub);
+}
+
+.status-tag-success {
+    background-color: var(--status-ok-bg);
+    color: var(--status-ok-text);
+}
+
+/* ==========================================================================
+   Minimal Form Controls & Filters
+   ========================================================================== */
+
+.simple-search {
+    border-radius: var(--radius-md);
+    border: 1px solid var(--pulse-border);
+    padding: 0.65rem 1rem 0.65rem 2.5rem;
+    font-size: 0.92rem;
+    width: 100%;
+}
+
+.simple-search:focus {
+    border-color: var(--pulse-brand);
+    outline: none;
+    box-shadow: 0 0 0 2px rgba(15, 43, 72, 0.1);
+}
+
+.search-wrap {
+    position: relative;
+}
+
+.search-wrap i {
+    position: absolute;
+    left: 14px;
+    top: 50%;
+    transform: translateY(-50%);
+    color: var(--pulse-text-faint);
+}
+
+.quick-filter-chip {
+    padding: 0.4rem 0.9rem;
+    border-radius: var(--radius-pill);
+    font-size: 0.82rem;
+    font-weight: 600;
+    border: 1px solid var(--pulse-border);
+    background: #ffffff;
+    color: var(--pulse-text-sub);
+    text-decoration: none;
+    transition: all 0.15s ease;
+}
+
+.quick-filter-chip:hover {
+    background: var(--pulse-subtle);
+    color: var(--pulse-text-main);
+}
+
+.quick-filter-chip.active {
+    background: var(--pulse-brand);
+    color: #ffffff;
+    border-color: var(--pulse-brand);
+}
+
+/* Simple Button */
+.btn-simple-primary {
+    background-color: var(--pulse-brand);
+    color: #ffffff;
+    border: none;
+    border-radius: var(--radius-sm);
+    font-size: 0.88rem;
+    font-weight: 600;
+    padding: 0.5rem 1rem;
+    text-decoration: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    transition: background-color 0.15s ease;
+}
+
+.btn-simple-primary:hover {
+    background-color: var(--pulse-brand-light);
+    color: #ffffff;
+}
+
+.btn-simple-secondary {
+    background-color: #ffffff;
+    color: var(--pulse-text-sub);
+    border: 1px solid var(--pulse-border);
+    border-radius: var(--radius-sm);
+    font-size: 0.88rem;
+    font-weight: 600;
+    padding: 0.5rem 1rem;
+    text-decoration: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    transition: all 0.15s ease;
+}
+
+.btn-simple-secondary:hover {
+    background-color: var(--pulse-subtle);
+    color: var(--pulse-text-main);
+}
+
+/* ==========================================================================
+   Minimal Table
+   ========================================================================== */
+
+.simple-table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.simple-table th {
+    font-size: 0.74rem;
+    text-transform: uppercase;
+    font-weight: 700;
+    color: var(--pulse-text-muted);
+    padding: 0.75rem 1rem;
+    border-bottom: 1px solid var(--pulse-border);
+    letter-spacing: 0.04em;
+}
+
+.simple-table td {
+    padding: 1rem;
+    border-bottom: 1px solid var(--pulse-border-light);
+    font-size: 0.9rem;
+    vertical-align: middle;
+}
+
+.simple-table tr:last-child td {
+    border-bottom: none;
+}
+
+.simple-table tr:hover td {
+    background-color: #fafafa;
+}
+
+/* Minimal Footer */
+.simple-footer {
+    margin-top: auto;
+    border-top: 1px solid var(--pulse-border);
+    background-color: #ffffff;
+    padding: 1.25rem 0;
+    font-size: 0.82rem;
+    color: var(--pulse-text-muted);
+}

@@ -1,0 +1,83 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sign In | PULSE — Rajkot Municipal Corporation</title>
+    <!-- Bootstrap 5.3 CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <!-- Bootstrap Icons -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    
+    <link rel="stylesheet" href="{% static 'css/custom.css' %}">
+    
+    <style>
+        body {
+            background-color: #0b1f35;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+        .clean-login-box {
+            background: #ffffff;
+            border-radius: 12px;
+            max-width: 420px;
+            width: 100%;
+            padding: 2.25rem;
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.25);
+        }
+    </style>
+</head>
+<body>
+
+<div class="clean-login-box">
+    <div class="text-center mb-4">
+        <div class="d-inline-flex p-3 rounded-3 mb-2" style="background-color: #0f2b48; color: #ffffff;">
+            <i class="bi bi-activity fs-3"></i>
+        </div>
+        <h3 class="fw-bold text-dark mb-0">PULSE</h3>
+        <div class="text-muted small">Rajkot Municipal Corporation</div>
+    </div>
+
+    <form method="POST" action="{% url 'login' %}">
+        {% csrf_token %}
+        <div class="mb-3">
+            <label class="form-label small fw-bold text-dark">Staff Username</label>
+            <input type="text" name="username" class="form-control" value="commissioner" required>
+        </div>
+
+        <div class="mb-3">
+            <label class="form-label small fw-bold text-dark">Password</label>
+            <input type="password" name="password" class="form-control" value="RMCpulse2026!" required>
+        </div>
+
+        <button type="submit" class="btn btn-primary w-100 py-2 fw-semibold mb-3" style="background-color: #0f2b48; border-color: #0f2b48;">
+            Sign In &rarr;
+        </button>
+    </form>
+
+    <div class="pt-3 border-top text-center">
+        <div class="small text-muted mb-2">Demo Persona Quick Access:</div>
+        <div class="d-flex flex-wrap gap-1.5 justify-content-center">
+            <a href="{% url 'dashboard' %}" class="btn btn-sm btn-outline-secondary py-1 px-2.5" style="font-size: 0.78rem;">
+                Commissioner
+            </a>
+            <a href="{% url 'dept_analytics' %}" class="btn btn-sm btn-outline-secondary py-1 px-2.5" style="font-size: 0.78rem;">
+                Dept Head
+            </a>
+            <a href="{% url 'location_analytics' %}" class="btn btn-sm btn-outline-secondary py-1 px-2.5" style="font-size: 0.78rem;">
+                Ward Officer
+            </a>
+        </div>
+    </div>
+</div>
+
+</body>
+</html>

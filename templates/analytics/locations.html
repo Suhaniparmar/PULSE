@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+
+{% block title %}Wards | PULSE — Rajkot Municipal Corporation{% endblock %}
+
+{% block content %}
+<!-- Page Header -->
+<div class="d-flex flex-wrap justify-content-between align-items-center mb-4">
+    <div>
+        <h2 class="fw-bold mb-1" style="color: var(--pulse-brand);">Ward & Geographic Distribution</h2>
+        <div class="text-muted small">Complaints mapped across all 18 Wards and 3 Zones of Rajkot.</div>
+    </div>
+</div>
+
+<!-- 3 Zone Cards -->
+<div class="row g-4 mb-4">
+    {% for zone_data in zones %}
+    <div class="col-lg-4">
+        <div class="simple-card h-100 p-0 overflow-hidden">
+            <div class="p-3 border-bottom bg-light d-flex justify-content-between align-items-center">
+                <strong class="text-dark"><i class="bi bi-geo-alt text-primary me-1"></i> {{ zone_data.zone }}</strong>
+                <span class="badge bg-white text-dark border">{{ zone_data.wards|length }} Wards</span>
+            </div>
+
+            <div class="p-3 d-flex flex-column gap-2">
+                {% for ward in zone_data.wards %}
+                <div class="p-2.5 rounded border bg-light bg-opacity-50 d-flex justify-content-between align-items-center">
+                    <div>
+                        <div class="fw-bold text-dark small">
+                            Ward {{ ward.number }}: {{ ward.name }}
+                            {% if ward.number == 2 or ward.number == 7 %}
+                            <span class="status-tag status-tag-urgent ms-1" style="font-size: 0.65rem;">Spike</span>
+                            {% endif %}
+                        </div>
+                        <div class="text-muted" style="font-size: 0.74rem;">
+                            Top: {{ ward.primary_issue }}
+                        </div>
+                    </div>
+                    <span class="badge bg-white text-dark border font-monospace">
+                        {{ ward.complaints }}
+                    </span>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+
+<!-- Location Note -->
+<div class="simple-card bg-light">
+    <div class="d-flex align-items-start gap-2.5">
+        <i class="bi bi-info-circle text-primary fs-5 mt-0.5"></i>
+        <div class="small text-muted">
+            <strong class="text-dark">Zero-Hallucination Location Policy:</strong> Locations and ward numbers are assigned strictly when citizens explicitly mention a known neighborhood (e.g. Kalawad Road, Railnagar Underpass) matching RMC's official list of 340+ landmarks. Unknown locations are never guessed.
+        </div>
+    </div>
+</div>
+{% endblock %}
