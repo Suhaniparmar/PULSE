@@ -7,7 +7,7 @@
 <div class="d-flex flex-wrap justify-content-between align-items-center mb-4">
     <div>
         <h2 class="fw-bold mb-1" style="color: var(--pulse-brand);">Staff Email Alerts</h2>
-        <div class="text-muted small">Configure automated email alerts for critical civic spikes and emergencies.</div>
+        <div class="text-muted small">Configure email alerts for life-safety emergencies.</div>
     </div>
 </div>
 
@@ -33,13 +33,6 @@
 
                 <div class="mb-4">
                     <label class="form-label small fw-bold text-dark mb-2">When should PULSE email you?</label>
-                    <div class="form-check mb-2">
-                        <input class="form-check-input" type="checkbox" name="notify_critical_trends" id="critTrend" {% if settings.notify_critical_trends %}checked{% endif %}>
-                        <label class="form-check-label text-dark small" for="critTrend">
-                            <strong>Immediate Critical Surges</strong> (When complaints exceed &ge; 3.0x normal baseline)
-                        </label>
-                    </div>
-
                     <div class="form-check mb-2">
                         <input class="form-check-input" type="checkbox" name="notify_emergency_urgency" id="emergHazard" {% if settings.notify_emergency_urgency %}checked{% endif %}>
                         <label class="form-check-label text-dark small" for="emergHazard">

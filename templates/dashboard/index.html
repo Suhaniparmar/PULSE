@@ -1,158 +1,88 @@
 {% extends "base.html" %}
+{% load pulse_extras %}
 
 {% block title %}Dashboard | PULSE — Rajkot Municipal Corporation{% endblock %}
 
 {% block content %}
-<!-- Page Title -->
-<div class="d-flex flex-wrap justify-content-between align-items-center mb-4">
+<div class="page-head">
     <div>
-        <h2 class="fw-bold mb-1" style="color: var(--pulse-brand);">City Overview</h2>
-        <div class="text-muted small">Real-time citizen feedback across Rajkot Wards 1 to 18 (Past 24 Hours)</div>
+        <h2>City Overview</h2>
+        <div class="page-sub">Citizen complaints across Rajkot's 18 wards · data up to {{ anchor|date:"d M Y, H:i" }}</div>
     </div>
-    <div class="mt-2 mt-sm-0">
-        <a href="{% url 'feedback_inbox' %}" class="btn-simple-primary">
-            <i class="bi bi-inbox-fill"></i> View All Complaints
-        </a>
-    </div>
+    <a href="{% url 'feedback_inbox' %}" class="btn-simple-primary"><i class="bi bi-inbox-fill"></i> View all complaints</a>
 </div>
 
-<!-- 3 Clean Key Numbers -->
+<!-- Filter: department + category -->
+<form method="GET" class="filter-bar compact">
+    <div class="row g-2 align-items-end">
+        {% include "partials/_filter_selects.html" %}
+        {% if active_dept or active_category %}
+        <div class="col-auto"><a href="{% url 'dashboard' %}" class="btn-simple-secondary py-2">Clear filter</a></div>
+        {% endif %}
+        <div class="col text-end small text-muted align-self-center">
+            Showing {% if active_category %}<strong>{{ active_category.name|title }}</strong>{% elif active_dept %}<strong>{{ active_dept.name }}</strong>{% else %}<strong>all categories</strong>{% endif %}
+        </div>
+    </div>
+</form>
+
+{% include "partials/_hero.html" %}
+
 <div class="row g-3 mb-4">
-    <div class="col-md-4">
-        <div class="stat-box">
-            <div class="stat-label">Complaints Today</div>
-            <div class="stat-value">{{ kpis.total_24h }}</div>
-            <div class="small text-muted mt-2">
-                <i class="bi bi-arrow-up-right text-success me-1"></i> +14% compared to weekly average
-            </div>
-        </div>
+    <div class="col-sm-6">
+        <a class="tile" href="{% url 'feedback_inbox' %}?urgency=EMERGENCY">
+            <span class="tile-icon bad"><i class="bi bi-exclamation-octagon"></i></span>
+            <span><span class="tile-num d-block">{{ urgent_count }}</span><span class="tile-label">Urgent or high-priority this week</span></span>
+            <i class="bi bi-chevron-right ms-auto text-muted"></i>
+        </a>
     </div>
-
-    <div class="col-md-4">
-        <div class="stat-box">
-            <div class="stat-label">Urgent Action Areas</div>
-            <div class="stat-value text-danger">{{ kpis.active_alerts_count }}</div>
-            <div class="small text-danger mt-2">
-                <i class="bi bi-exclamation-circle me-1"></i> Ward 2 (Drainage) & Ward 7 (Roads)
-            </div>
-        </div>
-    </div>
-
-    <div class="col-md-4">
-        <div class="stat-box">
-            <div class="stat-label">Citizen Languages</div>
-            <div class="stat-value fs-3 mt-1 text-dark">
-                Gujarati {{ kpis.gu_feedback_pct }}%
-            </div>
-            <div class="small text-muted mt-2">
-                Hindi {{ kpis.hi_feedback_pct }}% • English {{ kpis.en_feedback_pct }}%
-            </div>
-        </div>
-    </div>
-</div>
-
-<!-- Urgent Action Box (if alerts active) -->
-{% if kpis.active_alerts_count > 0 %}
-<div class="simple-card mb-4" style="border-left: 4px solid #ef4444;">
-    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2">
-        <div>
-            <div class="fw-bold text-danger fs-6 d-flex align-items-center gap-2">
-                <i class="bi bi-exclamation-octagon-fill"></i>
-                <span>Urgent Action Needed in Ward 2 (Railnagar)</span>
-            </div>
-            <div class="small text-dark mt-1">
-                Drainage complaints are <strong>3.4x higher than normal</strong> (41 complaints in 18 hours). Desilting jetting machine deployment recommended.
-            </div>
-        </div>
-        <a href="{% url 'trend_alerts' %}" class="btn-simple-secondary">
-            View Urgent Alerts &rarr;
+    <div class="col-sm-6">
+        <a class="tile" href="{% url 'feedback_inbox' %}?status=pending">
+            <span class="tile-icon blue"><i class="bi bi-clipboard-check"></i></span>
+            <span><span class="tile-num d-block">{{ review_count }}</span><span class="tile-label">Awaiting staff verification</span></span>
+            <i class="bi bi-chevron-right ms-auto text-muted"></i>
         </a>
     </div>
 </div>
-{% endif %}
+
+{% include "partials/_rising.html" %}
 
 <div class="row g-4 mb-4">
-    <!-- Left: Department Complaints Summary -->
-    <div class="col-lg-6">
-        <div class="simple-card h-100">
+    <div class="col-lg-7">
+        <div class="simple-card h-100 mb-0">
             <div class="simple-card-header">
-                <h3 class="simple-card-title">
-                    <i class="bi bi-building"></i> Complaints by Department
-                </h3>
-                <a href="{% url 'dept_analytics' %}" class="small text-muted text-decoration-none">View All &rarr;</a>
+                <h3 class="simple-card-title"><i class="bi bi-geo-alt"></i> Where complaints are coming from</h3>
+                <a href="{% url 'location_analytics' %}" class="small text-muted text-decoration-none">All wards &rarr;</a>
             </div>
-
-            <div class="d-flex flex-column gap-3">
-                {% for dept in departments %}
-                <div>
-                    <div class="d-flex justify-content-between align-items-center small mb-1">
-                        <span class="fw-semibold text-dark">{{ dept.name }}</span>
-                        <span class="text-muted"><strong>{{ dept.open_complaints }}</strong> open</span>
-                    </div>
-                    <div class="progress" style="height: 6px; border-radius: 999px;">
-                        {% if dept.open_complaints > 20 %}
-                        <div class="progress-bar bg-danger" style="width: 80%;"></div>
-                        {% elif dept.open_complaints > 10 %}
-                        <div class="progress-bar bg-warning" style="width: 50%;"></div>
-                        {% else %}
-                        <div class="progress-bar bg-primary" style="width: 25%;"></div>
-                        {% endif %}
-                    </div>
-                    <div class="text-muted" style="font-size: 0.74rem; margin-top: 2px;">
-                        Top issue: {{ dept.top_issue }}
-                    </div>
-                </div>
-                {% endfor %}
-            </div>
+            {% include "partials/_map.html" with map_size="short" %}
         </div>
     </div>
-
-    <!-- Right: Latest Citizen Messages -->
-    <div class="col-lg-6">
-        <div class="simple-card h-100">
+    <div class="col-lg-5 d-flex flex-column gap-4">
+        <div class="simple-card mb-0">
             <div class="simple-card-header">
-                <h3 class="simple-card-title">
-                    <i class="bi bi-chat-quote"></i> Latest Citizen Messages
-                </h3>
-                <a href="{% url 'feedback_inbox' %}" class="small text-muted text-decoration-none">Open Inbox &rarr;</a>
+                <h3 class="simple-card-title"><i class="bi bi-list-ol"></i> Top issues this week</h3>
             </div>
-
-            <div class="d-flex flex-column gap-2.5">
-                {% for item in recent_feedback %}
-                <div class="p-3 rounded-2 border bg-light bg-opacity-50">
-                    <div class="d-flex justify-content-between align-items-center mb-1">
-                        <span class="small fw-bold text-muted">{{ item.channel }}</span>
-                        {% if item.urgency == 'EMERGENCY' %}
-                        <span class="status-tag status-tag-urgent">🚨 Urgent</span>
-                        {% elif item.urgency == 'HIGH' %}
-                        <span class="status-tag status-tag-normal text-warning">⚠️ High</span>
-                        {% else %}
-                        <span class="status-tag status-tag-normal">Routine</span>
-                        {% endif %}
-                    </div>
-
-                    <!-- Verbatim Citizen Voice -->
-                    <div class="gujarati-text fw-medium text-dark mb-1" style="font-size: 0.95rem;">
-                        "{{ item.raw_text }}"
-                    </div>
-
-                    {% if item.language != 'en' %}
-                    <div class="small text-muted mb-2">
-                        <em>{{ item.translation_en }}</em>
-                    </div>
-                    {% endif %}
-
-                    <div class="d-flex justify-content-between align-items-center pt-2 border-top small" style="font-size: 0.78rem;">
-                        <span class="text-muted">
-                            <i class="bi bi-geo-alt text-danger me-1"></i> {{ item.location }} ({{ item.ward }})
-                        </span>
-                        <a href="{% url 'feedback_detail' item.id %}" class="text-decoration-none fw-semibold">
-                            Review &rarr;
-                        </a>
-                    </div>
-                </div>
-                {% endfor %}
+            <div class="brk">
+                {% for c in top_categories %}
+                <a class="brk-row text-decoration-none" href="{% url 'feedback_inbox' %}?category={{ c.id }}">
+                    <div class="brk-top"><span class="brk-name">{{ c.name|title }}</span><strong class="text-dark">{{ c.count }}</strong></div>
+                    <div class="brk-track"><div class="brk-fill" style="width: {{ c.width }}%"></div></div>
+                </a>
+                {% empty %}<div class="text-muted small">No complaints this week.</div>{% endfor %}
             </div>
+        </div>
+        <div class="simple-card mb-0">
+            <div class="simple-card-header">
+                <h3 class="simple-card-title"><i class="bi bi-pin-map"></i> Busiest wards this week</h3>
+            </div>
+            <div class="d-flex flex-column gap-2">
+                {% for w in top_wards %}
+                <a href="{% url 'ward_detail' w.number %}" class="d-flex justify-content-between align-items-center text-decoration-none py-1">
+                    <span class="text-dark small"><strong>Ward {{ w.number }}</strong> · {{ w.name }}</span>
+                    <span class="pill {% if w.urgent %}bad{% else %}blue{% endif %}">{{ w.count }}</span>
+                </a>
+                {% empty %}<div class="text-muted small">No complaints with an identified ward this week.</div>{% endfor %}
+            </div>
+            {% if unlocated %}<div class="note-line mt-3"><i class="bi bi-info-circle"></i><span>{{ unlocated }} more this week have no ward on record.</span></div>{% endif %}
         </div>
     </div>
 </div>

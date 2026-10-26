@@ -8,6 +8,15 @@ from .analyzers.base import BaseCivicAnalyzer
 # Default analyzer singleton
 _default_analyzer = LocalCivicAnalyzer()
 
+def official_ward_number(metadata: Optional[dict]) -> Optional[int]:
+    """Ward recorded by RMC itself (official complaint exports carry a Ward column); None if absent or invalid."""
+    try:
+        number = int(str((metadata or {}).get("rmc_ward", "")).strip())
+    except ValueError:
+        return None
+    return number if 1 <= number <= 18 else None
+
+
 def get_analyzer(model_version: Optional[str] = None) -> BaseCivicAnalyzer:
     """Returns the configured analyzer engine."""
     return _default_analyzer
@@ -38,9 +47,9 @@ def analyze_and_store_feedback(feedback_item: FeedbackItem, analyzer: Optional[B
             category = CivicCategory.objects.filter(department=dept).first()
 
     # 3. Map Location
-    location = None
-    if result.suggested_ward_number:
-        location = CivicLocation.objects.filter(ward_number=result.suggested_ward_number).first()
+    # The ward in RMC's own record is authoritative; text matching is only the fallback.
+    ward_number = official_ward_number(feedback_item.raw_metadata) or result.suggested_ward_number
+    location = CivicLocation.objects.filter(ward_number=ward_number).first() if ward_number else None
 
     # 4. Mark previous active analyses as inactive
     FeedbackAnalysis.objects.filter(feedback_item=feedback_item).update(is_active_version=False)

@@ -1,278 +1,588 @@
 import uuid
-import re
 import os
 from datetime import timedelta
+from functools import wraps
+
+from django.conf import settings
 from django.shortcuts import render, redirect, get_object_or_404
-from django.http import HttpResponse, JsonResponse
+from django.core.paginator import Paginator
 from django.utils import timezone
-from django.db.models import Count, Avg, Q
+from django.db.models import Count, Avg, Max, Q
 from django.contrib.auth import login, logout, authenticate
 from django.contrib.auth.models import User
-from django.core.files.storage import default_storage
 
 from apps.master_data.models import Department, CivicLocation, CivicCategory
-from apps.accounts.models import StaffProfile
 from apps.ingestion.models import DataSource, ImportRun
 from apps.ingestion.connectors.file_import import FileImportConnector
 from apps.feedback.models import FeedbackItem
 from apps.intelligence.models import FeedbackAnalysis, AnalysisReview
-from apps.analytics.models import TrendAlert
-from apps.analytics.engine import detect_civic_trends
 from apps.notifications.models import StaffNotificationPreference, NotificationDeliveryLog
 from apps.audit_compliance.models import AuditLog
 
+from .geo import ward_coords, RAJKOT_CENTER
+
+DEMO_PASSWORD = "RMCpulse2026!"
+
+# --------------------------------------------------------------------------
+# Personas
+#
+# Three kinds of people log in, and each gets a different home and menu:
+#   city  - Commissioner (citywide view; ANALYST / AUDITOR roles share it, read-only in spirit)
+#   dept  - Department Head (only their department's complaints)
+#   ward  - Ward Officer (only their ward's complaints)
+# --------------------------------------------------------------------------
+PERSONAS = [
+    {
+        "key": "city", "username": "commissioner", "title": "Commissioner",
+        "subtitle": "Citywide view of every department and ward",
+        "icon": "bi-building-fill",
+    },
+    {
+        "key": "dept", "username": "ee_drainage", "title": "Department Head",
+        "subtitle": "Complaints for your department, by issue and ward",
+        "icon": "bi-diagram-3-fill",
+    },
+    {
+        "key": "ward", "username": "ward10_officer", "title": "Ward Officer",
+        "subtitle": "Everything reported in your ward, on the map",
+        "icon": "bi-geo-alt-fill",
+    },
+]
+
+NAV_BY_PERSONA = {
+    "city": [
+        ("dashboard", "Dashboard", "dashboard"),
+        ("feedback", "Complaints", "feedback_inbox"),
+        ("departments", "Departments", "dept_analytics"),
+        ("locations", "Wards", "location_analytics"),
+        ("integrations", "Upload Data", "integrations_hub"),
+    ],
+    "dept": [
+        ("dashboard", "My Department", "dashboard"),
+        ("feedback", "Complaints", "feedback_inbox"),
+        ("locations", "Wards", "location_analytics"),
+    ],
+    "ward": [
+        ("dashboard", "My Ward", "dashboard"),
+        ("feedback", "Complaints", "feedback_inbox"),
+    ],
+}
+
+WINDOWS = [
+    ("24h", "24 hours", timedelta(hours=24)),
+    ("7d", "7 days", timedelta(days=7)),
+    ("30d", "30 days", timedelta(days=30)),
+    ("90d", "90 days", timedelta(days=90)),
+    ("all", "All time", None),
+]
+WINDOW_MAP = {k: (label, delta) for k, label, delta in WINDOWS}
+
+DEPT_ICONS = {
+    'drainage-chockup-overflow': 'bi-water',
+    'roshni-branch': 'bi-lightbulb',
+    'solid-waste-management': 'bi-trash3',
+    'water-works-outdoor': 'bi-droplet-half',
+    'drainage-maintenance': 'bi-tools',
+    'bandhkam-civil-roads': 'bi-cone-striped',
+    'city-bus-rajpath': 'bi-bus-front',
+    'ancd-animal-control': 'bi-shield-exclamation',
+    'conservancy-dead-animal': 'bi-heartbreak',
+    'garden-sports': 'bi-tree',
+    'daban-hatav-branch': 'bi-signpost-split',
+    'health-urban-maleriya': 'bi-hospital',
+    'food-sanitation': 'bi-cup-hot',
+    'town-planning-estate': 'bi-buildings',
+    'traffic-transport-cell': 'bi-sign-stop',
+}
+
+CHART_COLORS = ["#2563eb", "#0ea5e9", "#14b8a6", "#f59e0b", "#ef4444", "#94a3b8"]
+PAGE_SIZE = 15
+
+
+def persona_of(user):
+    profile = getattr(user, 'profile', None)
+    if profile and profile.role == 'DEPT_HEAD':
+        return 'dept'
+    if profile and profile.role == 'WARD_OFFICER':
+        return 'ward'
+    return 'city'
+
+
+def staff_required(view):
+    @wraps(view)
+    def wrapper(request, *args, **kwargs):
+        if not request.user.is_authenticated:
+            return redirect("login")
+        return view(request, *args, **kwargs)
+    return wrapper
+
+
+def city_only(view):
+    @wraps(view)
+    @staff_required
+    def wrapper(request, *args, **kwargs):
+        if persona_of(request.user) != 'city':
+            return redirect("dashboard")
+        return view(request, *args, **kwargs)
+    return wrapper
+
+
 def get_common_context(request, active_tab="dashboard"):
-    # Current authenticated user or default demo admin persona
-    user = request.user if request.user.is_authenticated else User.objects.filter(username="commissioner").first()
+    user = request.user if request.user.is_authenticated else None
     profile = getattr(user, 'profile', None) if user else None
+    persona = persona_of(user) if user else 'city'
+
+    name = (user.get_full_name() or user.username) if user else ""
+    initials = "".join(p[0] for p in name.replace(".", " ").split()[:2]).upper() or "P"
+
+    scope_label = {
+        'city': "All departments · All wards",
+        'dept': profile.department.name if profile and profile.department else "No department assigned",
+        'ward': profile.assigned_ward.ward_name.split(" - ")[0] if profile and profile.assigned_ward else "No ward assigned",
+    }[persona]
 
     return {
         "active_tab": active_tab,
-        "app_name": "PULSE",
-        "app_full_name": "Public Listening for Urban Service Excellence",
-        "municipality": "Rajkot Municipal Corporation",
+        "persona": persona,
+        "nav_items": [
+            {"key": k, "label": label, "url_name": url}
+            for k, label, url in NAV_BY_PERSONA[persona]
+        ],
         "current_user": {
-            "name": user.get_full_name() if user and user.get_full_name() else (user.username if user else "Shri D. V. Mehta"),
-            "role": profile.get_role_display() if profile else "Superintending Engineer / Central Administrator",
-            "badge": "Admin / Exec",
-            "avatar_initials": "DM" if not user or not user.first_name else f"{user.first_name[0]}{user.last_name[0] if user.last_name else ''}"
+            "name": name,
+            "role": profile.get_role_display() if profile else "Administrator",
+            "badge": scope_label,
+            "avatar_initials": initials,
         },
-        "is_synthetic_mode": True,
     }
 
+
+# --------------------------------------------------------------------------
+# Scoping, filtering and time windows
+# --------------------------------------------------------------------------
+def scoped_analyses(user):
+    """Active analyses this user is allowed to see."""
+    qs = FeedbackAnalysis.objects.filter(is_active_version=True).select_related(
+        'feedback_item__data_source', 'category', 'suggested_department', 'extracted_location'
+    )
+    profile = getattr(user, 'profile', None)
+    persona = persona_of(user)
+    if persona == 'dept':
+        return qs.filter(suggested_department=profile.department) if profile.department else qs.none()
+    if persona == 'ward':
+        return qs.filter(extracted_location=profile.assigned_ward) if profile.assigned_ward else qs.none()
+    return qs
+
+
+def data_anchor():
+    """Windows are measured back from the newest record, so demo/imported data never looks empty."""
+    latest = FeedbackItem.objects.aggregate(m=Max('published_at'))['m']
+    return latest or timezone.now()
+
+
+def window_key(request, default="all"):
+    key = request.GET.get("window", default)
+    return key if key in WINDOW_MAP else default
+
+
+def in_window(qs, key, anchor, previous=False):
+    delta = WINDOW_MAP[key][1]
+    if delta is None:
+        return qs if not previous else qs.none()
+    end = anchor - delta if previous else anchor
+    return qs.filter(feedback_item__published_at__gt=end - delta, feedback_item__published_at__lte=end)
+
+
+def pct_change(cur, prev):
+    if not prev:
+        return None
+    return round((cur - prev) / prev * 100)
+
+
+def _int(value):
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def parse_filters(params):
+    return {
+        "q": params.get("q", "").strip(),
+        "dept": _int(params.get("dept")),
+        "category": _int(params.get("category")),
+        "ward": _int(params.get("ward")),
+        "zone": params.get("zone", "") if params.get("zone") in ("WEST", "CENTRAL", "EAST") else "",
+        "urgency": params.get("urgency", "") if params.get("urgency") in ("EMERGENCY", "HIGH", "MEDIUM", "LOW") else "",
+        "status": params.get("status", "") if params.get("status") in ("pending", "reviewed") else "",
+        "channel": _int(params.get("channel")),
+        "sort": params.get("sort", "new") if params.get("sort") in ("new", "old", "urgent") else "new",
+    }
+
+
+def apply_filters(qs, f):
+    if f["q"]:
+        qs = qs.filter(
+            Q(feedback_item__raw_text__icontains=f["q"]) |
+            Q(raw_location_string__icontains=f["q"]) |
+            Q(category__name__icontains=f["q"]) |
+            Q(short_summary__icontains=f["q"])
+        )
+    if f["dept"]:
+        qs = qs.filter(suggested_department_id=f["dept"])
+    if f["category"]:
+        qs = qs.filter(category_id=f["category"])
+    if f["ward"]:
+        qs = qs.filter(extracted_location__ward_number=f["ward"])
+    if f["zone"]:
+        qs = qs.filter(extracted_location__zone=f["zone"])
+    if f["urgency"]:
+        qs = qs.filter(urgency=f["urgency"])
+    if f["status"] == "reviewed":
+        qs = qs.filter(feedback_item__status="REVIEWED")
+    elif f["status"] == "pending":
+        qs = qs.exclude(feedback_item__status="REVIEWED")
+    if f["channel"]:
+        qs = qs.filter(feedback_item__data_source_id=f["channel"])
+    return qs
+
+
+def apply_sort(qs, sort):
+    if sort == "old":
+        return qs.order_by('feedback_item__published_at')
+    if sort == "urgent":
+        from django.db.models import Case, When, IntegerField
+        rank = Case(
+            When(urgency="EMERGENCY", then=0), When(urgency="HIGH", then=1),
+            When(urgency="MEDIUM", then=2), default=3, output_field=IntegerField(),
+        )
+        return qs.annotate(_rank=rank).order_by('_rank', '-feedback_item__published_at')
+    return qs.order_by('-feedback_item__published_at')
+
+
+def querystring_without(request, *drop):
+    q = request.GET.copy()
+    for k in drop:
+        q.pop(k, None)
+    return q.urlencode()
+
+
+# --------------------------------------------------------------------------
+# Presentation helpers
+# --------------------------------------------------------------------------
+def ward_short(loc):
+    """'Ward 02 - Railnagar / Popatpara' -> 'Railnagar / Popatpara'."""
+    return loc.ward_name.split(" - ", 1)[1] if " - " in loc.ward_name else loc.ward_name
+
+
+def sentiment_label(score):
+    if score is None:
+        return ("No data", "muted")
+    if score <= -0.2:
+        return ("Negative", "bad")
+    if score >= 0.2:
+        return ("Positive", "good")
+    return ("Neutral", "mid")
+
+
+def complaint_row(a):
+    item = a.feedback_item
+    loc = a.extracted_location
+    if loc:
+        place, ward = ward_short(loc), f"Ward {loc.ward_number}"
+    elif a.raw_location_string:
+        place, ward = a.raw_location_string, "Ward not identified"
+    else:
+        place, ward = "Location not mentioned", "Ward not identified"
+    return {
+        "id": str(item.id),
+        "raw_text": item.raw_text,
+        "translation_en": a.short_summary or item.raw_text,
+        "language": item.detected_language,
+        "language_name": {"gu": "Gujarati", "hi": "Hindi", "en": "English"}.get(item.detected_language, "Mixed"),
+        "channel": item.data_source.name if item.data_source else "Batch Ingestion",
+        "published_at": f"{item.published_at:%d %b %Y, %H:%M}",
+        "category": a.category.name if a.category else "Uncategorised",
+        "department": a.suggested_department.name if a.suggested_department else "Unassigned",
+        "place": place,
+        "ward": ward,
+        "ward_number": loc.ward_number if loc else None,
+        "urgency": a.urgency,
+        "is_reviewed": item.status == "REVIEWED",
+        "requires_review": a.requires_human_review,
+    }
+
+
+def spark(qs, anchor, buckets, step):
+    """Counts per bucket, oldest first, with bar heights scaled 6-100%."""
+    start = anchor - step * buckets
+    counts = [0] * buckets
+    for ts in qs.filter(feedback_item__published_at__gt=start,
+                        feedback_item__published_at__lte=anchor).values_list('feedback_item__published_at', flat=True):
+        idx = min(int((ts - start) / step), buckets - 1)
+        counts[idx] += 1
+    peak = max(counts) or 1
+    return [{"count": c, "height": max(6, round(c / peak * 100))} for c in counts]
+
+
+def hero_stats(qs, anchor):
+    """The two headline numbers (24h, 7d) with change vs the period before and a small bar chart."""
+    out = []
+    for key, label, buckets, step, bucket_label in (
+        ("24h", "Last 24 hours", 6, timedelta(hours=4), "4-hour blocks"),
+        ("7d", "Last 7 days", 7, timedelta(days=1), "daily"),
+    ):
+        cur = in_window(qs, key, anchor).count()
+        prev = in_window(qs, key, anchor, previous=True).count()
+        out.append({
+            "key": key, "label": label, "count": cur, "change": pct_change(cur, prev),
+            "prev": prev, "bars": spark(qs, anchor, buckets, step), "bar_label": bucket_label,
+        })
+    return out
+
+
+def category_breakdown(qs, limit=8):
+    rows = list(qs.values('category_id', 'category__name', 'suggested_department__name')
+                .annotate(c=Count('id')).order_by('-c')[:limit])
+    peak = rows[0]['c'] if rows else 1
+    return [{
+        "id": r['category_id'], "name": r['category__name'] or "Uncategorised",
+        "dept": r['suggested_department__name'] or "Unassigned", "count": r['c'],
+        "width": max(4, round(r['c'] / peak * 100)),
+    } for r in rows]
+
+
+def rising_issues(qs, anchor, limit=4, min_count=2):
+    """Issues reported noticeably more this week than last week (needs >= min_count reports and +50%)."""
+    prev_counts = {r['category_id']: r['c'] for r in
+                   in_window(qs, "7d", anchor, previous=True).values('category_id').annotate(c=Count('id'))}
+    out = []
+    for r in (in_window(qs, "7d", anchor).exclude(category__isnull=True)
+              .values('category_id', 'category__name', 'suggested_department__name').annotate(c=Count('id'))):
+        before = prev_counts.get(r['category_id'], 0)
+        if r['c'] >= min_count and r['c'] >= before * 1.5 and r['c'] > before:
+            out.append({
+                "id": r['category_id'], "name": r['category__name'],
+                "dept": r['suggested_department__name'] or "Unassigned",
+                "now": r['c'], "before": before, "change": pct_change(r['c'], before),
+            })
+    return sorted(out, key=lambda x: x["before"] - x["now"])[:limit]
+
+
+def ward_points(qs, user_persona=None):
+    """Marker data for the map + per-ward counts, built from a (windowed, scoped) analysis queryset."""
+    counts = {r['extracted_location_id']: r for r in qs.filter(extracted_location__isnull=False)
+              .values('extracted_location_id')
+              .annotate(c=Count('id'), urgent=Count('id', filter=Q(urgency__in=["EMERGENCY", "HIGH"])))}
+    points = []
+    for loc in CivicLocation.objects.order_by('ward_number'):
+        coords = ward_coords(loc)
+        row = counts.get(loc.id, {})
+        points.append({
+            "id": loc.id, "number": loc.ward_number, "name": ward_short(loc), "zone": loc.get_zone_display(),
+            "zone_key": loc.zone, "count": row.get('c', 0), "urgent": row.get('urgent', 0),
+            "lat": coords[0] if coords else None, "lng": coords[1] if coords else None,
+        })
+    return points
+
+
+def map_payload(points, focus=None):
+    return {"points": [p for p in points if p["lat"] is not None],
+            "center": list(RAJKOT_CENTER), "focus": focus}
+
+
+def filter_options(user, f):
+    """Dropdown choices for filter bars, limited to what this user can see."""
+    persona = persona_of(user)
+    profile = getattr(user, 'profile', None)
+    depts = Department.objects.filter(is_active=True).order_by('name')
+    if persona == 'dept':
+        depts = depts.filter(id=profile.department_id)
+    cats = CivicCategory.objects.filter(is_active=True)
+    dept_for_cats = f["dept"] or (profile.department_id if persona == 'dept' else None)
+    if dept_for_cats:
+        cats = cats.filter(department_id=dept_for_cats)
+    else:
+        used = scoped_analyses(user).values_list('category_id', flat=True)
+        cats = cats.filter(id__in=set(used))
+    wards = CivicLocation.objects.order_by('ward_number')
+    if persona == 'ward':
+        wards = wards.filter(id=profile.assigned_ward_id)
+    return {
+        "departments": depts,
+        "categories": cats.order_by('name'),
+        "wards": [{"number": w.ward_number, "label": f"Ward {w.ward_number} · {ward_short(w)}"} for w in wards],
+        "channels": DataSource.objects.order_by('name'),
+    }
+
+
+# --------------------------------------------------------------------------
+# Auth
+# --------------------------------------------------------------------------
 def login_view(request):
+    error = ""
     if request.method == "POST":
-        username = request.POST.get("username", "commissioner")
-        user = User.objects.filter(username=username).first()
-        if not user:
-            # Check by email
-            user = User.objects.filter(email=username).first()
+        user = authenticate(request, username=request.POST.get("username", "").strip(),
+                            password=request.POST.get("password", ""))
         if user:
             login(request, user)
             return redirect("dashboard")
-        return redirect("dashboard")
+        error = "Username or password is incorrect."
 
-    context = get_common_context(request, active_tab="login")
-    return render(request, "accounts/login.html", context)
+    personas = []
+    for p in PERSONAS:
+        u = User.objects.filter(username=p["username"]).select_related('profile').first()
+        if u:
+            personas.append({**p, "person": u.get_full_name() or u.username})
+    return render(request, "accounts/login.html", {
+        "personas": personas, "error": error, "demo_password": DEMO_PASSWORD,
+    })
 
+
+def logout_view(request):
+    logout(request)
+    return redirect("login")
+
+
+# --------------------------------------------------------------------------
+# Home (one view, three different screens)
+# --------------------------------------------------------------------------
+@staff_required
 def dashboard_view(request):
-    context = get_common_context(request, active_tab="dashboard")
-    now = timezone.now()
-    cutoff_24h = now - timedelta(hours=24)
-    cutoff_7d = now - timedelta(days=7)
+    persona = persona_of(request.user)
+    return {"city": city_home, "dept": dept_home, "ward": ward_home}[persona](request)
 
-    # 1. KPIs from live database
-    total_24h = FeedbackItem.objects.filter(published_at__gte=cutoff_24h).count() or FeedbackItem.objects.count()
-    total_7d = FeedbackItem.objects.filter(published_at__gte=cutoff_7d).count() or FeedbackItem.objects.count()
-    
-    avg_score = FeedbackAnalysis.objects.filter(is_active_version=True).aggregate(avg=Avg('sentiment_score'))['avg'] or -0.48
-    net_sentiment = int(avg_score * 100)
 
-    active_alerts = TrendAlert.objects.filter(is_acknowledged=False).order_by('-created_at')
-    unreviewed_count = FeedbackAnalysis.objects.filter(requires_human_review=True, is_active_version=True).count()
+def city_home(request):
+    context = get_common_context(request, "dashboard")
+    anchor = data_anchor()
+    f = parse_filters(request.GET)
+    f["ward"] = f["zone"] = None  # the dashboard only filters by department / category
 
-    # Language breakdown
-    lang_counts = FeedbackItem.objects.values('detected_language').annotate(c=Count('id'))
-    total_items = max(FeedbackItem.objects.count(), 1)
-    gu_pct = round((sum(x['c'] for x in lang_counts if x['detected_language'] in ['gu', 'mixed']) / total_items) * 100) or 58
-    hi_pct = round((sum(x['c'] for x in lang_counts if x['detected_language'] == 'hi') / total_items) * 100) or 22
-    en_pct = max(100 - gu_pct - hi_pct, 10)
+    qs = apply_filters(scoped_analyses(request.user), f)
+    active = Department.objects.filter(id=f["dept"]).first() if f["dept"] else None
+    active_cat = CivicCategory.objects.filter(id=f["category"]).first() if f["category"] else None
 
-    # 2. Department Workload Matrix from live database
-    dept_qs = Department.objects.filter(is_active=True).annotate(
-        complaint_count=Count('suggested_analyses', filter=Q(suggested_analyses__is_active_version=True)),
-        avg_sentiment=Avg('suggested_analyses__sentiment_score', filter=Q(suggested_analyses__is_active_version=True))
-    )
-
-    dept_list = []
-    icon_map = {
-        'drainage-chockup-overflow': 'bi-water',
-        'roshni-branch': 'bi-lightbulb',
-        'solid-waste-management': 'bi-trash3',
-        'water-works-outdoor': 'bi-droplet-half',
-        'drainage-maintenance': 'bi-tools',
-        'bandhkam-civil-roads': 'bi-cone-striped',
-        'city-bus-rajpath': 'bi-bus-front',
-        'ancd-animal-control': 'bi-shield-exclamation',
-        'conservancy-dead-animal': 'bi-heartbreak',
-        'garden-sports': 'bi-tree',
-        'daban-hatav-branch': 'bi-signpost-split',
-        'health-urban-maleriya': 'bi-hospital',
-    }
-
-    for d in dept_qs[:6]:
-        # Top issue
-        top_cat = CivicCategory.objects.filter(department=d).first()
-        top_issue_str = top_cat.name if top_cat else d.description[:35]
-        s_avg = round(d.avg_sentiment if d.avg_sentiment is not None else -0.55, 2)
-        has_spike = active_alerts.filter(department=d).exists()
-
-        dept_list.append({
-            "id": d.id,
-            "name": d.name,
-            "code": d.code,
-            "icon": icon_map.get(d.code, "bi-building"),
-            "head": d.head_title,
-            "open_complaints": d.complaint_count or 15,
-            "sentiment_avg": s_avg,
-            "spike_active": has_spike,
-            "top_issue": top_issue_str,
-        })
-
-    # 3. Recent Ingested Feedback
-    recent_items = FeedbackItem.objects.select_related('data_source').prefetch_related(
-        'analyses__suggested_department', 'analyses__category', 'analyses__extracted_location'
-    ).order_by('-published_at')[:4]
-
-    feedback_display = []
-    for item in recent_items:
-        act_analysis = item.analyses.filter(is_active_version=True).first()
-        urgency = act_analysis.urgency if act_analysis else "MEDIUM"
-        urgency_badge = "bg-danger" if urgency == "EMERGENCY" else ("bg-warning text-dark" if urgency == "HIGH" else "bg-info text-dark")
-        
-        feedback_display.append({
-            "id": str(item.id),
-            "raw_text": item.raw_text,
-            "translation_en": act_analysis.short_summary if act_analysis and act_analysis.short_summary else item.raw_text,
-            "language": item.detected_language,
-            "language_name": "Gujarati" if item.detected_language == "gu" else ("Hindi" if item.detected_language == "hi" else "English"),
-            "channel": item.data_source.name if item.data_source else "Intake Feed",
-            "channel_icon": "bi-whatsapp" if item.data_source and "whatsapp" in item.data_source.name.lower() else "bi-file-earmark-spreadsheet",
-            "external_id": item.external_id,
-            "published_at": f"{item.published_at:%d %b %H:%M}",
-            "urgency": urgency,
-            "urgency_badge": urgency_badge,
-            "location": act_analysis.extracted_location.ward_name if act_analysis and act_analysis.extracted_location else (act_analysis.raw_location_string if act_analysis else "Rajkot"),
-            "ward": f"Ward {act_analysis.extracted_location.ward_number}" if act_analysis and act_analysis.extracted_location and act_analysis.extracted_location.ward_number else "Citywide",
-        })
+    week = in_window(qs, "7d", anchor)
+    wards = ward_points(week)
+    top_wards = sorted((w for w in wards if w["count"]), key=lambda w: -w["count"])[:5]
 
     context.update({
-        "departments": dept_list,
-        "recent_alerts": active_alerts,
-        "recent_feedback": feedback_display,
-        "kpis": {
-            "total_24h": total_24h,
-            "total_7d": total_7d,
-            "net_sentiment": net_sentiment,
-            "active_alerts_count": active_alerts.count(),
-            "unreviewed_count": unreviewed_count,
-            "gu_feedback_pct": gu_pct,
-            "hi_feedback_pct": hi_pct,
-            "en_feedback_pct": en_pct,
-        }
+        "filters": f,
+        "options": filter_options(request.user, f),
+        "active_dept": active, "active_category": active_cat,
+        "hero": hero_stats(qs, anchor),
+        "rising": rising_issues(qs, anchor),
+        "urgent_count": week.filter(urgency__in=["EMERGENCY", "HIGH"]).count(),
+        "review_count": qs.filter(requires_human_review=True).count(),
+        "top_categories": category_breakdown(week, 5),
+        "top_wards": top_wards,
+        "unlocated": week.filter(extracted_location__isnull=True).count(),
+        "map": map_payload(wards),
+        "anchor": anchor,
     })
     return render(request, "dashboard/index.html", context)
 
+
+def dept_home(request):
+    context = get_common_context(request, "dashboard")
+    profile = request.user.profile
+    anchor = data_anchor()
+    qs = scoped_analyses(request.user)
+    key = window_key(request, "30d")
+    windowed = in_window(qs, key, anchor)
+
+    avg = windowed.aggregate(a=Avg('sentiment_score'))['a']
+    wards = ward_points(windowed)
+    context.update({
+        "dept": profile.department,
+        "dept_icon": DEPT_ICONS.get(profile.department.code, "bi-building") if profile.department else "bi-building",
+        "hero": hero_stats(qs, anchor),
+        "rising": rising_issues(qs, anchor),
+        "windows": WINDOWS, "window": key, "window_label": WINDOW_MAP[key][0],
+        "total": windowed.count(),
+        "urgent_count": windowed.filter(urgency__in=["EMERGENCY", "HIGH"]).count(),
+        "review_count": qs.filter(requires_human_review=True).count(),
+        "sentiment": sentiment_label(avg),
+        "categories": category_breakdown(windowed, 8),
+        "top_wards": sorted((w for w in wards if w["count"]), key=lambda w: -w["count"])[:6],
+        "unlocated": windowed.filter(extracted_location__isnull=True).count(),
+        "map": map_payload(wards),
+        "anchor": anchor,
+    })
+    return render(request, "dashboard/dept_home.html", context)
+
+
+def ward_home(request):
+    profile = request.user.profile
+    ward = profile.assigned_ward
+    if not ward:
+        context = get_common_context(request, "dashboard")
+        return render(request, "dashboard/ward_home.html", {**context, "ward": None})
+    return ward_detail_view(request, ward.ward_number, as_home=True)
+
+
+# --------------------------------------------------------------------------
+# Complaints inbox
+# --------------------------------------------------------------------------
+@staff_required
 def feedback_inbox_view(request):
-    context = get_common_context(request, active_tab="feedback")
+    context = get_common_context(request, "feedback")
+    anchor = data_anchor()
+    f = parse_filters(request.GET)
+    key = window_key(request)
 
-    query = request.GET.get("q", "").strip()
-    selected_lang = request.GET.get("lang", "")
-    selected_dept = request.GET.get("dept", "")
-    selected_urgency = request.GET.get("urgency", "")
-    selected_ward = request.GET.get("ward", "")
-    selected_status = request.GET.get("status", "")
+    qs = in_window(apply_filters(scoped_analyses(request.user), f), key, anchor)
+    qs = apply_sort(qs, f["sort"])
+    page = Paginator(qs, PAGE_SIZE).get_page(request.GET.get("page"))
 
-    qs = FeedbackItem.objects.select_related('data_source').prefetch_related(
-        'analyses__suggested_department', 'analyses__category', 'analyses__extracted_location'
-    ).order_by('-published_at')
-
-    if query:
-        qs = qs.filter(Q(raw_text__icontains=query) | Q(analyses__raw_location_string__icontains=query) | Q(analyses__category__name__icontains=query)).distinct()
-    if selected_lang:
-        qs = qs.filter(detected_language=selected_lang)
-    if selected_dept:
-        qs = qs.filter(analyses__suggested_department__name=selected_dept)
-    if selected_urgency:
-        qs = qs.filter(analyses__urgency=selected_urgency)
-    if selected_ward:
-        # Match ward number or name
-        ward_num = re.search(r'\d+', selected_ward)
-        if ward_num:
-            qs = qs.filter(analyses__extracted_location__ward_number=int(ward_num.group()))
-    if selected_status:
-        if selected_status == "reviewed":
-            qs = qs.filter(status="REVIEWED")
-        elif selected_status == "pending":
-            qs = qs.exclude(status="REVIEWED")
-
-    # Format for template
-    items_list = []
-    for item in qs[:50]:
-        act = item.analyses.filter(is_active_version=True).first()
-        urgency = act.urgency if act else "MEDIUM"
-        urgency_badge = "bg-danger" if urgency == "EMERGENCY" else ("bg-warning text-dark" if urgency == "HIGH" else "bg-info text-dark")
-        is_rev = (item.status == "REVIEWED")
-
-        items_list.append({
-            "id": str(item.id),
-            "raw_text": item.raw_text,
-            "translation_en": act.short_summary if act and act.short_summary else item.raw_text,
-            "language": item.detected_language,
-            "language_name": "Gujarati" if item.detected_language == "gu" else ("Hindi" if item.detected_language == "hi" else "English"),
-            "channel": item.data_source.name if item.data_source else "Batch Ingestion",
-            "channel_icon": "bi-whatsapp" if item.data_source and "whatsapp" in item.data_source.name.lower() else "bi-file-earmark-spreadsheet",
-            "published_at": f"{item.published_at:%d %b %H:%M}",
-            "category": act.category.name if act and act.category else "Civic Service",
-            "department": act.suggested_department.name if act and act.suggested_department else "Municipal Administration",
-            "location": act.extracted_location.ward_name if act and act.extracted_location else (act.raw_location_string if act else "Rajkot"),
-            "ward": f"Ward {act.extracted_location.ward_number}" if act and act.extracted_location and act.extracted_location.ward_number else "Citywide",
-            "zone": act.extracted_location.get_zone_display() if act and act.extracted_location else "Rajkot",
-            "urgency": urgency,
-            "urgency_badge": urgency_badge,
-            "sentiment": act.sentiment if act else "NEGATIVE",
-            "confidence": int((act.confidence_score if act else 0.85) * 100),
-            "is_reviewed": is_rev,
-            "requires_review": act.requires_human_review if act else False,
-        })
-
-    all_depts = Department.objects.filter(is_active=True).order_by('name')
+    active_filters = sum(1 for k in ("q", "dept", "category", "ward", "zone", "urgency", "status", "channel") if f[k])
+    if key != "all":
+        active_filters += 1
 
     context.update({
-        "items": items_list,
-        "departments": all_depts,
-        "total_count": len(items_list),
-        "selected_lang": selected_lang,
-        "selected_dept": selected_dept,
-        "selected_urgency": selected_urgency,
-        "selected_ward": selected_ward,
-        "selected_status": selected_status,
-        "query": query,
+        "items": [complaint_row(a) for a in page.object_list],
+        "page": page,
+        "total_count": page.paginator.count,
+        "filters": f,
+        "options": filter_options(request.user, f),
+        "windows": WINDOWS, "window": key,
+        "active_filters": active_filters,
+        "base_qs": querystring_without(request, "page"),
     })
     return render(request, "feedback/inbox.html", context)
 
-def feedback_detail_view(request, item_id):
-    context = get_common_context(request, active_tab="feedback")
 
-    # Fetch feedback item by UUID
+@staff_required
+def feedback_detail_view(request, item_id):
+    context = get_common_context(request, "feedback")
+
     try:
-        feedback_uuid = uuid.UUID(item_id)
-        item = get_object_or_404(FeedbackItem, id=feedback_uuid)
+        item = get_object_or_404(FeedbackItem, id=uuid.UUID(item_id))
     except ValueError:
-        item = FeedbackItem.objects.first()
-        if not item:
-            return redirect("feedback_inbox")
+        return redirect("feedback_inbox")
 
     active_analysis = item.analyses.filter(is_active_version=True).first()
+
+    # Dept heads / ward officers may only open complaints in their own scope.
+    if persona_of(request.user) != 'city':
+        if not scoped_analyses(request.user).filter(feedback_item=item).exists():
+            return redirect("feedback_inbox")
 
     # Handle Human-in-the-Loop review form submission
     if request.method == "POST":
         new_dept_name = request.POST.get("department")
-        new_ward_str = request.POST.get("ward")
         new_urgency = request.POST.get("urgency")
-        new_category_str = request.POST.get("category")
         review_notes = request.POST.get("review_notes", "")
 
-        user = request.user if request.user.is_authenticated else User.objects.filter(username="commissioner").first()
+        user = request.user
 
         prev_dept = active_analysis.suggested_department if active_analysis else None
         prev_urgency = active_analysis.urgency if active_analysis else "MEDIUM"
-        prev_cat = active_analysis.category if active_analysis else None
 
         new_dept = Department.objects.filter(name=new_dept_name).first() or prev_dept
-        
-        # Save AnalysisReview
-        if active_analysis and user:
+
+        if active_analysis:
             AnalysisReview.objects.create(
                 analysis=active_analysis,
                 reviewed_by=user,
@@ -283,17 +593,14 @@ def feedback_detail_view(request, item_id):
                 review_notes=review_notes
             )
 
-            # Update active analysis
             active_analysis.suggested_department = new_dept
             active_analysis.urgency = new_urgency
             active_analysis.requires_human_review = False
             active_analysis.save()
 
-            # Mark item as REVIEWED
             item.status = "REVIEWED"
             item.save(update_fields=["status", "updated_at"])
 
-            # Create AuditLog
             AuditLog.objects.create(
                 user=user,
                 action="HUMAN_REVIEW_CORRECTION",
@@ -349,147 +656,195 @@ def feedback_detail_view(request, item_id):
     })
     return render(request, "feedback/detail.html", context)
 
+
+# --------------------------------------------------------------------------
+# Departments (commissioner)
+# --------------------------------------------------------------------------
+@city_only
 def department_analytics_view(request):
-    context = get_common_context(request, active_tab="departments")
-    
-    dept_qs = Department.objects.filter(is_active=True).annotate(
-        complaints_count=Count('suggested_analyses', filter=Q(suggested_analyses__is_active_version=True)),
-        avg_sentiment=Avg('suggested_analyses__sentiment_score', filter=Q(suggested_analyses__is_active_version=True))
-    ).order_by('-complaints_count')
+    context = get_common_context(request, "departments")
+    anchor = data_anchor()
+    key = window_key(request, "30d")
+    sort = request.GET.get("sort", "volume")
+    if sort not in ("volume", "sentiment", "urgent"):
+        sort = "volume"
 
-    active_alerts = TrendAlert.objects.filter(is_acknowledged=False)
+    qs = scoped_analyses(request.user)
+    cur = in_window(qs, key, anchor)
+    prev = in_window(qs, key, anchor, previous=True)
+    total = cur.count()
 
-    icon_map = {
-        'drainage-chockup-overflow': 'bi-water',
-        'roshni-branch': 'bi-lightbulb',
-        'solid-waste-management': 'bi-trash3',
-        'water-works-outdoor': 'bi-droplet-half',
-        'drainage-maintenance': 'bi-tools',
-        'bandhkam-civil-roads': 'bi-cone-striped',
-        'city-bus-rajpath': 'bi-bus-front',
-        'ancd-animal-control': 'bi-shield-exclamation',
-        'conservancy-dead-animal': 'bi-heartbreak',
-        'garden-sports': 'bi-tree',
-        'daban-hatav-branch': 'bi-signpost-split',
-        'health-urban-maleriya': 'bi-hospital',
-    }
+    prev_counts = {r['suggested_department_id']: r['c'] for r in prev.values('suggested_department_id').annotate(c=Count('id'))}
+    stats = {r['suggested_department_id']: r for r in cur.values('suggested_department_id').annotate(
+        c=Count('id'), avg=Avg('sentiment_score'),
+        urgent=Count('id', filter=Q(urgency__in=["EMERGENCY", "HIGH"])))}
 
-    dept_list = []
-    for d in dept_qs:
-        s_avg = round(d.avg_sentiment if d.avg_sentiment is not None else -0.55, 2)
-        top_cat = CivicCategory.objects.filter(department=d).first()
-        top_issue_str = top_cat.name if top_cat else d.description[:35]
-        has_spike = active_alerts.filter(department=d).exists()
+    top_cat = {}
+    for r in cur.values('suggested_department_id', 'category__name').annotate(c=Count('id')).order_by('c'):
+        top_cat[r['suggested_department_id']] = (r['category__name'] or "Uncategorised", r['c'])
 
-        dept_list.append({
-            "id": d.id,
-            "name": d.name,
-            "code": d.code,
-            "icon": icon_map.get(d.code, "bi-building"),
-            "head": d.head_title,
-            "open_complaints": d.complaints_count or 10,
-            "sentiment_avg": s_avg,
-            "spike_active": has_spike,
-            "top_issue": top_issue_str,
+    cards, quiet = [], []
+    for d in Department.objects.filter(is_active=True).order_by('name'):
+        s = stats.get(d.id)
+        if not s:
+            quiet.append({"id": d.id, "name": d.name})
+            continue
+        label, tone = sentiment_label(s['avg'])
+        cards.append({
+            "id": d.id, "name": d.name, "icon": DEPT_ICONS.get(d.code, "bi-building"), "head": d.head_title,
+            "count": s['c'], "share": round(s['c'] / total * 100) if total else 0,
+            "urgent": s['urgent'], "sentiment_label": label, "sentiment_tone": tone, "avg": s['avg'] or 0,
+            "change": pct_change(s['c'], prev_counts.get(d.id, 0)) if key != "all" else None,
+            "top_issue": top_cat.get(d.id, ("—", 0))[0],
         })
+    sorter = {"volume": lambda c: -c["count"], "sentiment": lambda c: c["avg"], "urgent": lambda c: -c["urgent"]}[sort]
+    cards.sort(key=sorter)
+    peak = max((c["count"] for c in cards), default=1)
+    for c in cards:
+        c["width"] = max(4, round(c["count"] / peak * 100))
 
-    # Recurring themes from categories
-    top_themes = [
-        {"name": "Main Line Overflowing & Manhole Choke", "count": 4595, "dept": "DRAINAGE CHOCKUP/OVERFLOW", "trend": "+34%"},
-        {"name": "LED(TL) Streetlights Not Functioning", "count": 1010, "dept": "ROSHNI BRANCH", "trend": "+12%"},
-        {"name": "Street Sweeping Not Done & Garbage Bins", "count": 408, "dept": "SOLID WASTE MANAGEMENT", "trend": "-5%"},
-        {"name": "Drinking Water Pipeline Leakage & Low Pressure", "count": 244, "dept": "WATER WORKS(OUTDOOR)", "trend": "+18%"},
-        {"name": "Potholes & Asphalt Bitumen Damage", "count": 214, "dept": "BANDHKAM", "trend": "+22%"},
-        {"name": "Catch Stray Animals (Dhor Pakadva)", "count": 59, "dept": "A.N.C.D.", "trend": "-2%"},
-    ]
+    # Most common issues, with change vs previous period
+    prev_issue = {r['category_id']: r['c'] for r in prev.values('category_id').annotate(c=Count('id'))}
+    issues = []
+    for r in cur.values('category_id', 'category__name', 'suggested_department__name').annotate(c=Count('id')).order_by('-c')[:8]:
+        issues.append({
+            "rank": len(issues) + 1, "name": r['category__name'] or "Uncategorised",
+            "dept": r['suggested_department__name'] or "Unassigned", "count": r['c'],
+            "category_id": r['category_id'],
+            "change": pct_change(r['c'], prev_issue.get(r['category_id'], 0)) if key != "all" else None,
+            "share": round(r['c'] / total * 100, 1) if total else 0,
+        })
+    peak_issue = issues[0]["count"] if issues else 1
+    for i in issues:
+        i["width"] = max(4, round(i["count"] / peak_issue * 100))
+
+    # Complaint share donut: top 5 departments + everything else
+    share, angle, stops = [], 0.0, []
+    ranked = sorted(cards, key=lambda c: -c["count"])
+    parts = [(c["name"], c["count"]) for c in ranked[:5]]
+    rest = sum(c["count"] for c in ranked[5:])
+    if rest:
+        parts.append(("All other departments", rest))
+    for idx, (name, n) in enumerate(parts):
+        pct = n / total * 100 if total else 0
+        stops.append(f"{CHART_COLORS[idx]} {angle:.2f}% {angle + pct:.2f}%")
+        share.append({"name": name, "count": n, "pct": round(pct, 1), "color": CHART_COLORS[idx]})
+        angle += pct
 
     context.update({
-        "departments": dept_list,
-        "top_themes": top_themes,
+        "windows": WINDOWS, "window": key, "window_label": WINDOW_MAP[key][0], "sort": sort,
+        "total": total, "cards": cards, "quiet": quiet, "issues": issues,
+        "share": share, "donut": ", ".join(stops) if stops else "#e5e7eb 0% 100%",
+        "anchor": anchor,
     })
     return render(request, "analytics/departments.html", context)
 
+
+# --------------------------------------------------------------------------
+# Wards
+# --------------------------------------------------------------------------
+@staff_required
 def location_analytics_view(request):
-    context = get_common_context(request, active_tab="locations")
+    if persona_of(request.user) == 'ward':
+        return redirect("dashboard")
 
-    zones_data = [
-        {"zone": "West Zone", "wards": []},
-        {"zone": "Central Zone", "wards": []},
-        {"zone": "East Zone", "wards": []},
-    ]
+    context = get_common_context(request, "locations")
+    anchor = data_anchor()
+    key = window_key(request)
 
-    zone_key_map = {"WEST": 0, "CENTRAL": 1, "EAST": 2}
+    qs = scoped_analyses(request.user)
+    windowed = in_window(qs, key, anchor)
+    points = ward_points(windowed)
 
-    for loc in CivicLocation.objects.order_by('ward_number'):
-        idx = zone_key_map.get(loc.zone, 1)
-        count = FeedbackAnalysis.objects.filter(extracted_location=loc, is_active_version=True).count()
-        zones_data[idx]["wards"].append({
-            "number": loc.ward_number,
-            "name": loc.ward_name,
-            "complaints": count if count > 0 else (65 + loc.ward_number * 3),
-            "primary_issue": loc.known_landmarks.split(",")[0] if loc.known_landmarks else "General Civic Services"
-        })
+    # primary issue per ward
+    top_issue = {}
+    for r in windowed.filter(extracted_location__isnull=False).values('extracted_location_id', 'category__name').annotate(c=Count('id')).order_by('c'):
+        top_issue[r['extracted_location_id']] = r['category__name'] or "Uncategorised"
+
+    peak = max((p["count"] for p in points), default=0)
+    for p in points:
+        p["top_issue"] = top_issue.get(p["id"], "")
+        p["heat"] = "none" if not p["count"] else ("high" if p["count"] >= peak * 0.66 else ("mid" if p["count"] >= peak * 0.33 else "low"))
+        p["width"] = round(p["count"] / peak * 100) if peak else 0
 
     context.update({
-        "zones": zones_data,
-        "total_wards": 18,
+        "wards": points,
+        "map": map_payload(points),
+        "windows": WINDOWS, "window": key, "window_label": WINDOW_MAP[key][0],
+        "mapped_total": sum(p["count"] for p in points),
+        "unlocated": windowed.filter(extracted_location__isnull=True).count(),
+        "busiest": max(points, key=lambda p: p["count"]) if peak else None,
+        "wards_with_data": sum(1 for p in points if p["count"]),
     })
     return render(request, "analytics/locations.html", context)
 
-def trend_alerts_view(request):
-    context = get_common_context(request, active_tab="alerts")
 
-    # Trigger fresh trend detection check
-    detect_civic_trends()
+@staff_required
+def ward_detail_view(request, ward_number, as_home=False):
+    persona = persona_of(request.user)
+    profile = getattr(request.user, 'profile', None)
+    ward = get_object_or_404(CivicLocation, ward_number=ward_number)
+    if persona == 'ward' and (not profile.assigned_ward or profile.assigned_ward_id != ward.id):
+        return redirect("dashboard")
 
-    if request.method == "POST" and "acknowledge_id" in request.POST:
-        alert_id = request.POST.get("acknowledge_id")
-        user = request.user if request.user.is_authenticated else User.objects.filter(username="commissioner").first()
-        alert = TrendAlert.objects.filter(id=alert_id).first()
-        if alert and user:
-            alert.is_acknowledged = True
-            alert.acknowledged_by = user
-            alert.acknowledged_at = timezone.now()
-            alert.save(update_fields=["is_acknowledged", "acknowledged_by", "acknowledged_at", "updated_at"])
+    context = get_common_context(request, "dashboard" if persona == 'ward' else "locations")
+    anchor = data_anchor()
+    f = parse_filters(request.GET)
+    f["ward"] = ward.ward_number
+    key = window_key(request)
 
-    alerts = TrendAlert.objects.all().order_by('-created_at')
+    base = scoped_analyses(request.user).filter(extracted_location=ward)
+    windowed = in_window(base, key, anchor)
+    filtered = apply_sort(apply_filters(windowed, f), f["sort"])
+    page = Paginator(filtered, PAGE_SIZE).get_page(request.GET.get("page"))
 
-    alerts_list = []
-    for a in alerts:
-        alerts_list.append({
-            "id": a.id,
-            "title": a.alert_title,
-            "department": a.department.name,
-            "location": a.location.ward_name if a.location else "Rajkot Citywide",
-            "zone": a.location.get_zone_display() if a.location else "Citywide",
-            "time_window": f"{a.time_window_start:%d %b %H:%M} to {a.time_window_end:%H:%M}",
-            "current_volume": a.current_volume,
-            "baseline_volume": a.baseline_volume,
-            "spike_ratio": f"{a.spike_ratio}x",
-            "severity": a.severity,
-            "severity_badge": "bg-danger" if a.severity == "CRITICAL" else ("bg-warning text-dark" if a.severity == "WARNING" else "bg-info text-dark"),
-            "evidence_count": len(a.sample_evidence_ids) or a.current_volume,
-            "is_acknowledged": a.is_acknowledged,
-            "created_at": f"{a.created_at:%d %b %Y, %I:%M %p}",
-        })
+    avg = windowed.aggregate(a=Avg('sentiment_score'))['a']
+    dept_rows = windowed.values('suggested_department__name').annotate(c=Count('id')).order_by('-c')
+    peak = dept_rows[0]['c'] if dept_rows else 1
+    coords = ward_coords(ward)
+
+    officer = User.objects.filter(profile__assigned_ward=ward).first()
+    options = filter_options(request.user, f)
+    options["categories"] = CivicCategory.objects.filter(id__in=set(base.values_list('category_id', flat=True))).order_by('name')
 
     context.update({
-        "alerts": alerts_list,
-        "total_active": len([a for a in alerts_list if not a["is_acknowledged"]]),
+        "ward": ward, "ward_name": ward_short(ward), "zone": ward.get_zone_display(),
+        "officer_name": (officer.get_full_name() or officer.username) if officer else "",
+        "as_home": as_home,
+        "hero": hero_stats(base, anchor) if as_home else None,
+        "rising": rising_issues(base, anchor) if as_home else None,
+        "total": windowed.count(),
+        "urgent_count": windowed.filter(urgency__in=["EMERGENCY", "HIGH"]).count(),
+        "review_count": windowed.filter(requires_human_review=True).count(),
+        "sentiment": sentiment_label(avg),
+        "categories": category_breakdown(windowed, 6),
+        "departments": [{"name": r['suggested_department__name'] or "Unassigned", "count": r['c'],
+                         "width": max(4, round(r['c'] / peak * 100))} for r in dept_rows[:6]],
+        "items": [complaint_row(a) for a in page.object_list],
+        "page": page, "result_count": page.paginator.count,
+        "filters": f, "options": options, "hide_ward_filter": True,
+        "windows": WINDOWS, "window": key,
+        "base_qs": querystring_without(request, "page"),
+        "map": map_payload(ward_points(windowed), focus=ward.ward_number) if coords else None,
+        "anchor": anchor,
     })
-    return render(request, "alerts/index.html", context)
+    return render(request, "analytics/ward_detail.html", context)
 
+
+# --------------------------------------------------------------------------
+# Data upload (commissioner)
+# --------------------------------------------------------------------------
+@city_only
 def integrations_hub_view(request):
-    context = get_common_context(request, active_tab="integrations")
+    context = get_common_context(request, "integrations")
 
     # Handle file upload from user
     upload_msg = ""
     if request.method == "POST" and request.FILES.get("dataset_file"):
         uploaded_file = request.FILES["dataset_file"]
-        # Save temp file
         temp_dir = os.path.join(settings.BASE_DIR, "scratch")
         os.makedirs(temp_dir, exist_ok=True)
-        temp_path = os.path.join(temp_dir, uploaded_file.name)
+        temp_path = os.path.join(temp_dir, os.path.basename(uploaded_file.name))
         with open(temp_path, "wb+") as destination:
             for chunk in uploaded_file.chunks():
                 destination.write(chunk)
@@ -498,9 +853,8 @@ def integrations_hub_view(request):
         if not data_source:
             data_source = DataSource.objects.create(name="CSV/Excel Batch Importer", source_type="FILE_IMPORT", health_status="HEALTHY")
 
-        user = request.user if request.user.is_authenticated else User.objects.filter(username="commissioner").first()
         connector = FileImportConnector()
-        run, batch_res = connector.process_file(temp_path, data_source, uploaded_by=user, max_rows=100)
+        run, batch_res = connector.process_file(temp_path, data_source, uploaded_by=request.user, max_rows=100)
         upload_msg = f"Successfully processed {batch_res.total_processed} rows: {batch_res.new_items_count} new, {batch_res.duplicates_blocked} duplicates blocked."
 
     # Handle live WhatsApp message simulation directly from UI
@@ -594,15 +948,16 @@ def integrations_hub_view(request):
     })
     return render(request, "integrations/index.html", context)
 
+
+@staff_required
 def staff_notifications_view(request):
-    context = get_common_context(request, active_tab="settings")
-    user = request.user if request.user.is_authenticated else User.objects.filter(username="commissioner").first()
-    
+    context = get_common_context(request, "settings")
+    user = request.user
+
     pref, _ = StaffNotificationPreference.objects.get_or_create(staff_user=user)
 
     if request.method == "POST":
         pref.email_enabled = bool(request.POST.get("email_enabled"))
-        pref.notify_critical_trends = bool(request.POST.get("notify_critical_trends"))
         pref.notify_emergency_urgency = bool(request.POST.get("notify_emergency_urgency"))
         pref.save()
 
@@ -613,7 +968,6 @@ def staff_notifications_view(request):
             "staff_name": user.get_full_name() or user.username,
             "email": user.email or "commissioner@rmc.gov.in",
             "email_enabled": pref.email_enabled,
-            "notify_critical_trends": pref.notify_critical_trends,
             "notify_emergency_urgency": pref.notify_emergency_urgency,
             "last_email_sent": f"{last_log.subject} ({last_log.created_at:%d %b %H:%M})" if last_log else "None sent yet.",
         },

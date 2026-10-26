@@ -29,7 +29,7 @@ def run_phase5_verification():
     # 1. Test Authentication & Role Scoping
     print("\n[TEST 1] Authentication & Municipal Staff Roles")
     c = Client()
-    login_res = c.post('/accounts/login/', {'username': 'commissioner'})
+    login_res = c.post('/accounts/login/', {'username': 'commissioner', 'password': 'RMCpulse2026!'})
     assert login_res.status_code == 302, f"Login redirect failed: {login_res.status_code}"
     print("  ✓ Staff session login authenticated successfully.")
     
@@ -158,7 +158,7 @@ def run_phase5_verification():
         '/feedback/',
         '/analytics/departments/',
         '/analytics/locations/',
-        '/alerts/',
+        '/wards/10/',
         '/integrations/',
         '/settings/notifications/',
         '/accounts/login/',

@@ -96,8 +96,8 @@ Open your browser and navigate to:
 | Persona / Role | Username | Password | Access Scope |
 | :--- | :--- | :--- | :--- |
 | **Municipal Commissioner / Admin** | `commissioner` | `RMCpulse2026!` | Citywide view across all 15 departments and 18 wards. |
-| **Executive Engineer (Roads)** | `ee_roads` | `RMCpulse2026!` | Scoped to Engineering, Bandhkam & Civil works. |
-| **Ward 7 Flying Squad Officer** | `ward7_officer` | `RMCpulse2026!` | Scoped to Ward 7 (Amin Marg / Race Course). |
+| **Department Head (Drainage)** | `ee_drainage` | `RMCpulse2026!` | Scoped to Drainage Chockup/Overflow complaints. |
+| **Ward Officer (Ward 10)** | `ward10_officer` | `RMCpulse2026!` | Scoped to Ward 10 (150 Feet Ring Road / Mavdi). |
 
 ---
 

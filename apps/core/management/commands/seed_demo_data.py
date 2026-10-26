@@ -103,8 +103,8 @@ class Command(BaseCommand):
         # 4. Staff Users & Profiles
         users_data = [
             {"username": "commissioner", "email": "commissioner@rmc.gov.in", "first": "Shri D. V.", "last": "Mehta", "role": "MUNICIPAL_COMMISSIONER", "emp_id": "RMC-ADMIN-01"},
-            {"username": "ee_roads", "email": "ee.roads@rmc.gov.in", "first": "Rajesh", "last": "Patel", "role": "DEPT_HEAD", "dept": dept_map["engineering-roads"], "emp_id": "RMC-ENG-101"},
-            {"username": "ward7_officer", "email": "ward7@rmc.gov.in", "first": "Hitesh", "last": "Vora", "role": "WARD_OFFICER", "ward": ward_map[7], "emp_id": "RMC-WARD-07"},
+            {"username": "ee_drainage", "email": "ee.drainage@rmc.gov.in", "first": "Rajesh", "last": "Patel", "role": "DEPT_HEAD", "dept": Department.objects.filter(code="drainage-chockup-overflow").first() or dept_map["engineering-roads"], "emp_id": "RMC-ENG-101"},
+            {"username": "ward10_officer", "email": "ward10@rmc.gov.in", "first": "Hitesh", "last": "Vora", "role": "WARD_OFFICER", "ward": ward_map[10], "emp_id": "RMC-WARD-10"},
         ]
         user_map = {}
         for u in users_data:
@@ -117,7 +117,7 @@ class Command(BaseCommand):
                 user.save()
             user_map[u["username"]] = user
 
-            StaffProfile.objects.get_or_create(
+            StaffProfile.objects.update_or_create(
                 user=user,
                 defaults={
                     "employee_id": u["emp_id"],

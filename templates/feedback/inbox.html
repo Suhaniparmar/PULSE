@@ -1,119 +1,102 @@
 {% extends "base.html" %}
+{% load pulse_extras %}
 
-{% block title %}Complaints Inbox | PULSE — Rajkot Municipal Corporation{% endblock %}
+{% block title %}Complaints | PULSE — Rajkot Municipal Corporation{% endblock %}
 
 {% block content %}
-<!-- Page Header -->
-<div class="d-flex flex-wrap justify-content-between align-items-center mb-4">
+<div class="page-head">
     <div>
-        <h2 class="fw-bold mb-1" style="color: var(--pulse-brand);">Citizen Complaints Inbox</h2>
-        <div class="text-muted small">Incoming complaints from WhatsApp helpline, official RMC website, and survey spreadsheets.</div>
+        <h2>Citizen Complaints</h2>
+        <div class="page-sub">
+            {% if persona == 'dept' %}Complaints routed to your department.{% elif persona == 'ward' %}Complaints from your ward.{% else %}Complaints from WhatsApp, the RMC website and survey spreadsheets.{% endif %}
+        </div>
     </div>
-    <div class="mt-2 mt-sm-0">
-        <a href="{% url 'integrations_hub' %}" class="btn-simple-secondary">
-            <i class="bi bi-upload"></i> Upload Spreadsheet
-        </a>
-    </div>
+    {% include "partials/_window.html" %}
 </div>
 
-<!-- Search & Quick Filters Card -->
-<div class="simple-card mb-4 p-3.5">
-    <form method="GET" action="{% url 'feedback_inbox' %}" class="mb-3">
-        <div class="d-flex gap-2">
-            <div class="search-wrap flex-grow-1">
+<form method="GET" class="filter-bar" id="filters">
+    <input type="hidden" name="window" value="{{ window }}">
+    <div class="row g-2 align-items-end">
+        <div class="col-12 col-xl-4">
+            <label class="form-label">Search</label>
+            <div class="search-wrap">
                 <i class="bi bi-search"></i>
-                <input type="text" name="q" value="{{ query }}" class="simple-search" placeholder="Search complaints by keyword, ward, or street name (e.g. ખાડા, પાણી, Kalawad Road)...">
-            </div>
-            <button type="submit" class="btn-simple-primary">
-                Search
-            </button>
-            {% if query or selected_dept or selected_urgency %}
-            <a href="{% url 'feedback_inbox' %}" class="btn-simple-secondary">
-                Reset
-            </a>
-            {% endif %}
-        </div>
-    </form>
-
-    <!-- 5 Clean Quick Filters -->
-    <div class="d-flex flex-wrap align-items-center gap-2 pt-2 border-top">
-        <span class="small text-muted me-1 fw-semibold">Quick View:</span>
-        <a href="{% url 'feedback_inbox' %}" class="quick-filter-chip {% if not selected_dept and not selected_urgency %}active{% endif %}">
-            All Complaints ({{ total_count }})
-        </a>
-        <a href="{% url 'feedback_inbox' %}?urgency=EMERGENCY" class="quick-filter-chip {% if selected_urgency == 'EMERGENCY' %}active{% endif %} text-danger">
-            🚨 Urgent Only
-        </a>
-        <a href="{% url 'feedback_inbox' %}?dept=Drainage Chockup/Overflow" class="quick-filter-chip {% if 'Drainage' in selected_dept %}active{% endif %}">
-            Drainage
-        </a>
-        <a href="{% url 'feedback_inbox' %}?dept=Bandhkam" class="quick-filter-chip {% if selected_dept == 'Bandhkam' %}active{% endif %}">
-            Roads & Potholes
-        </a>
-        <a href="{% url 'feedback_inbox' %}?dept=Water Works(Outdoor)" class="quick-filter-chip {% if 'Water' in selected_dept %}active{% endif %}">
-            Drinking Water
-        </a>
-        <a href="{% url 'feedback_inbox' %}?dept=Solid Waste Management" class="quick-filter-chip {% if 'Solid' in selected_dept %}active{% endif %}">
-            Garbage
-        </a>
-    </div>
-</div>
-
-<!-- Clean Complaint List -->
-<div class="d-flex flex-column gap-3 mb-4">
-    {% for item in items %}
-    <div class="complaint-item {% if item.urgency == 'EMERGENCY' %}urgent-item{% endif %}">
-        <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
-            <div class="d-flex align-items-center gap-2">
-                {% if item.urgency == 'EMERGENCY' %}
-                <span class="status-tag status-tag-urgent">🚨 Urgent Safety Hazard</span>
-                {% elif item.urgency == 'HIGH' %}
-                <span class="status-tag status-tag-normal text-warning">⚠️ High Priority</span>
-                {% else %}
-                <span class="status-tag status-tag-normal">Routine</span>
-                {% endif %}
-
-                <span class="badge bg-light text-dark border fw-normal">{{ item.language_name }}</span>
-                <span class="text-muted small">• Received via {{ item.channel }}</span>
-            </div>
-
-            <div class="small text-muted font-monospace">
-                {{ item.published_at }}
+                <input type="text" name="q" value="{{ filters.q }}" class="simple-search" placeholder="Keyword, street, ખાડા, પાણી…">
             </div>
         </div>
-
-        <!-- Verbatim Citizen Voice -->
-        <div class="complaint-quote gujarati-text">
-            "{{ item.raw_text }}"
+        {% include "partials/_filter_selects.html" %}
+        {% if persona != 'ward' %}
+        <div class="col-6 col-md-3 col-xl-2">
+            <label class="form-label">Ward</label>
+            <select name="ward" class="form-select" onchange="this.form.submit()">
+                <option value="">All wards</option>
+                {% for w in options.wards %}<option value="{{ w.number }}" {% if filters.ward == w.number %}selected{% endif %}>{{ w.label }}</option>{% endfor %}
+            </select>
         </div>
-
-        <!-- English Translation -->
-        {% if item.language != 'en' %}
-        <div class="small text-muted mb-3 ps-2 border-start border-2 border-primary">
-            <strong>English:</strong> <em>{{ item.translation_en }}</em>
+        <div class="col-6 col-md-3 col-xl-2">
+            <label class="form-label">Zone</label>
+            <select name="zone" class="form-select" onchange="this.form.submit()">
+                <option value="">All zones</option>
+                <option value="WEST" {% if filters.zone == 'WEST' %}selected{% endif %}>West</option>
+                <option value="CENTRAL" {% if filters.zone == 'CENTRAL' %}selected{% endif %}>Central</option>
+                <option value="EAST" {% if filters.zone == 'EAST' %}selected{% endif %}>East</option>
+            </select>
         </div>
         {% endif %}
-
-        <!-- Clean Bottom Meta & Action -->
-        <div class="d-flex flex-wrap justify-content-between align-items-center pt-2 border-top gap-2">
-            <div class="complaint-meta">
-                <span><i class="bi bi-building text-muted me-1"></i> <strong>{{ item.department }}</strong> ({{ item.category }})</span>
-                <span>•</span>
-                <span><i class="bi bi-geo-alt text-danger me-1"></i> <strong>{{ item.location }}</strong> ({{ item.ward }})</span>
-            </div>
-
-            <a href="{% url 'feedback_detail' item.id %}" class="btn-simple-primary btn-sm py-1 px-3">
-                Review & Verify &rarr;
-            </a>
+        <div class="col-6 col-md-3 col-xl-2">
+            <label class="form-label">Priority</label>
+            <select name="urgency" class="form-select" onchange="this.form.submit()">
+                <option value="">Any priority</option>
+                <option value="EMERGENCY" {% if filters.urgency == 'EMERGENCY' %}selected{% endif %}>Urgent</option>
+                <option value="HIGH" {% if filters.urgency == 'HIGH' %}selected{% endif %}>High</option>
+                <option value="MEDIUM" {% if filters.urgency == 'MEDIUM' %}selected{% endif %}>Medium</option>
+                <option value="LOW" {% if filters.urgency == 'LOW' %}selected{% endif %}>Low</option>
+            </select>
+        </div>
+        <div class="col-6 col-md-3 col-xl-2">
+            <label class="form-label">Status</label>
+            <select name="status" class="form-select" onchange="this.form.submit()">
+                <option value="">Any status</option>
+                <option value="pending" {% if filters.status == 'pending' %}selected{% endif %}>To verify</option>
+                <option value="reviewed" {% if filters.status == 'reviewed' %}selected{% endif %}>Verified</option>
+            </select>
+        </div>
+        <div class="col-6 col-md-3 col-xl-2">
+            <label class="form-label">Source</label>
+            <select name="channel" class="form-select" onchange="this.form.submit()">
+                <option value="">All sources</option>
+                {% for ch in options.channels %}<option value="{{ ch.id }}" {% if filters.channel == ch.id %}selected{% endif %}>{{ ch.name }}</option>{% endfor %}
+            </select>
+        </div>
+        <div class="col-6 col-md-3 col-xl-2">
+            <label class="form-label">Sort</label>
+            <select name="sort" class="form-select" onchange="this.form.submit()">
+                <option value="new" {% if filters.sort == 'new' %}selected{% endif %}>Newest first</option>
+                <option value="old" {% if filters.sort == 'old' %}selected{% endif %}>Oldest first</option>
+                <option value="urgent" {% if filters.sort == 'urgent' %}selected{% endif %}>Most urgent first</option>
+            </select>
+        </div>
+        <div class="col-12 col-md-auto d-flex gap-2 ms-xl-auto">
+            <button type="submit" class="btn-simple-primary">Search</button>
+            {% if active_filters %}<a href="{% url 'feedback_inbox' %}" class="btn-simple-secondary">Reset ({{ active_filters }})</a>{% endif %}
         </div>
     </div>
+</form>
+
+<div class="d-flex justify-content-between align-items-center mb-2">
+    <div class="small text-muted"><strong class="text-dark">{{ total_count }}</strong> complaint{{ total_count|pluralize }}</div>
+</div>
+
+<div class="d-flex flex-column gap-3 mb-4">
+    {% for item in items %}{% include "partials/_complaint_card.html" %}
     {% empty %}
     <div class="simple-card text-center py-5 text-muted">
         <i class="bi bi-inbox fs-1 d-block mb-2 text-secondary"></i>
-        <h5 class="fw-bold text-dark">No complaints match your selection</h5>
-        <p class="small text-muted mb-3">Try clearing your search query or selecting "All Complaints".</p>
-        <a href="{% url 'feedback_inbox' %}" class="btn-simple-secondary">Clear Filters</a>
+        <h5 class="fw-bold text-dark">No complaints match these filters</h5>
+        <p class="small mb-3">Try a wider time window or clear a filter.</p>
+        <a href="{% url 'feedback_inbox' %}" class="btn-simple-secondary">Clear filters</a>
     </div>
     {% endfor %}
 </div>
+{% include "partials/_pager.html" %}
 {% endblock %}

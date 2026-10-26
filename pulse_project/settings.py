@@ -134,3 +134,6 @@ STATICFILES_DIRS = [BASE_DIR / 'static']
 # https://docs.djangoproject.com/en/4.2/ref/settings/#default-auto-field
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
+
+# Map tiles (OpenStreetMap) reject requests that carry no Referer; send the origin cross-site.
+SECURE_REFERRER_POLICY = "strict-origin-when-cross-origin"
