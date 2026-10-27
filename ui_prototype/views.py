@@ -369,6 +369,23 @@ def rising_issues(qs, anchor, limit=4, min_count=2):
     return sorted(out, key=lambda x: x["before"] - x["now"])[:limit]
 
 
+def headline_summary(hero, urgent, top_category, top_ward, scope):
+    """One plain sentence a first-time viewer can read to get the picture of the last 7 days."""
+    week = hero[1]
+    if not week["count"]:
+        return f"No complaints were received {scope} in the last 7 days."
+    parts = [f"{week['count']} complaint{'s' if week['count'] != 1 else ''} received {scope} in the last 7 days"]
+    if week["change"] is not None and week["change"] != 0:
+        parts[0] += f" ({'up' if week['change'] > 0 else 'down'} {abs(week['change'])}% from the week before)"
+    if urgent:
+        parts.append(f"{urgent} of them {'are' if urgent != 1 else 'is'} urgent")
+    if top_category and top_category["name"] != "Uncategorised":
+        parts.append(f"the most common issue is {top_category['name'].title()}")
+    if top_ward:
+        parts.append(f"the busiest area is Ward {top_ward['number']} ({top_ward['name']})")
+    return "; ".join(parts) + "."
+
+
 def ward_points(qs, user_persona=None):
     """Marker data for the map + per-ward counts, built from a (windowed, scoped) analysis queryset."""
     counts = {r['extracted_location_id']: r for r in qs.filter(extracted_location__isnull=False)
@@ -466,12 +483,16 @@ def city_home(request):
     week = in_window(qs, "7d", anchor)
     wards = ward_points(week)
     top_wards = sorted((w for w in wards if w["count"]), key=lambda w: -w["count"])[:5]
+    hero = hero_stats(qs, anchor)
 
     context.update({
         "filters": f,
         "options": filter_options(request.user, f),
         "active_dept": active, "active_category": active_cat,
-        "hero": hero_stats(qs, anchor),
+        "hero": hero,
+        "headline": headline_summary(
+            hero, week.filter(urgency__in=["EMERGENCY", "HIGH"]).count(),
+            (category_breakdown(week, 1) or [None])[0], (top_wards or [None])[0], "across Rajkot"),
         "rising": rising_issues(qs, anchor),
         "urgent_count": week.filter(urgency__in=["EMERGENCY", "HIGH"]).count(),
         "review_count": qs.filter(requires_human_review=True).count(),
@@ -494,10 +515,16 @@ def dept_home(request):
 
     avg = windowed.aggregate(a=Avg('sentiment_score'))['a']
     wards = ward_points(windowed)
+    hero = hero_stats(qs, anchor)
+    week = in_window(qs, "7d", anchor)
+    week_wards = sorted((w for w in ward_points(week) if w["count"]), key=lambda w: -w["count"])
     context.update({
+        "headline": headline_summary(
+            hero, week.filter(urgency__in=["EMERGENCY", "HIGH"]).count(),
+            (category_breakdown(week, 1) or [None])[0], (week_wards or [None])[0], "for your department"),
         "dept": profile.department,
         "dept_icon": DEPT_ICONS.get(profile.department.code, "bi-building") if profile.department else "bi-building",
-        "hero": hero_stats(qs, anchor),
+        "hero": hero,
         "rising": rising_issues(qs, anchor),
         "windows": WINDOWS, "window": key, "window_label": WINDOW_MAP[key][0],
         "total": windowed.count(),

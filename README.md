@@ -141,7 +141,7 @@ DEFAULT_FROM_EMAIL=PULSE Urban Intelligence <pulse-alerts@rmc.gov.in>
 | **WhatsApp Business Platform** | `WHATSAPP` | **LIVE & ACTIVE** | Official Meta Cloud API webhook endpoint (`/api/v1/integrations/whatsapp/webhook/`). Supports GET verification handshake and POST HMAC-SHA256 signature verification. |
 | **Twitter / X API v2** | `TWITTER_X` | **SCAFFOLDING READY** | Scaffolding prepared for official `@myrmc_rajkot` mentions via Bearer Token. Zero unauthenticated scraping. |
 | **Meta (Facebook & IG)** | `FACEBOOK` | **SCAFFOLDING READY** | Scaffolding prepared for official RMC Facebook page webhooks awaiting Page Access Token. |
-| **RMC Grievance Portal** | `RMC_PORTAL` | **GATEWAY ADAPTER** | Pulls public complaint feed from authorized municipal server. |
+| **RMC Grievance Portal** | `RMC_PORTAL` | **BUILT, AWAITING RMC ENDPOINT** | Live pull (`python manage.py sync_rmc_portal`, schedule via cron) of new complaints from an authorised RMC JSON feed, so no manual export is needed. Dedupes, discards citizen name/mobile, runs AI analysis. Needs the RMC API endpoint/token set in the admin (ConnectorConfig). Tested against a mocked feed only. |
 
 ---
 

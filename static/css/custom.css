@@ -555,3 +555,13 @@ a.tile:hover { border-color: #bfd0ea; box-shadow: 0 4px 14px rgba(15,43,72,.07);
 .scope-banner { display: inline-flex; align-items: center; gap: .5rem; background: #eff6ff; color: var(--pulse-brand); border-radius: var(--radius-pill); font-size: .78rem; font-weight: 600; padding: .3rem .85rem; margin-bottom: .6rem; }
 .note-line { font-size: .78rem; color: var(--pulse-text-muted); display: flex; gap: .4rem; align-items: flex-start; }
 .leaflet-container { font-family: inherit; }
+
+/* Dashboard storytelling: summary banner + numbered sections */
+.summary-banner { background: #eff6ff; border: 1px solid #cfe0f7; border-left: 4px solid var(--pulse-accent); border-radius: var(--radius-md); padding: .9rem 1.2rem; margin-bottom: 1.5rem; display: flex; gap: .8rem; align-items: flex-start; }
+.summary-banner i { color: var(--pulse-accent); font-size: 1.2rem; margin-top: .1rem; }
+.summary-banner .summary-kicker { font-size: .72rem; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; color: var(--pulse-text-muted); }
+.summary-banner p { margin: 0; color: var(--pulse-brand); font-weight: 600; line-height: 1.5; }
+.sec-head { display: flex; align-items: center; gap: .75rem; margin: 2rem 0 .9rem; }
+.sec-num { width: 28px; height: 28px; border-radius: 50%; background: var(--pulse-brand); color: #fff; font-weight: 700; font-size: .85rem; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.sec-head h3 { margin: 0; font-size: 1.1rem; font-weight: 800; color: var(--pulse-brand); }
+.sec-head .sec-sub { font-size: .82rem; color: var(--pulse-text-muted); }

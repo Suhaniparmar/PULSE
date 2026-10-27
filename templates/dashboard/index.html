@@ -12,6 +12,11 @@
     <a href="{% url 'feedback_inbox' %}" class="btn-simple-primary"><i class="bi bi-inbox-fill"></i> View all complaints</a>
 </div>
 
+<div class="summary-banner">
+    <i class="bi bi-chat-square-text"></i>
+    <div><div class="summary-kicker">In short</div><p>{{ headline }}</p></div>
+</div>
+
 <!-- Filter: department + category -->
 <form method="GET" class="filter-bar compact">
     <div class="row g-2 align-items-end">
@@ -25,20 +30,22 @@
     </div>
 </form>
 
+<div class="sec-head"><span class="sec-num">1</span><div><h3>How many complaints are coming in?</h3><div class="sec-sub">Total complaints received, compared with the period just before. Bars show the trend over time.</div></div></div>
 {% include "partials/_hero.html" %}
 
+<div class="sec-head"><span class="sec-num">2</span><div><h3>What needs action now?</h3><div class="sec-sub">Complaints staff should act on first, and issues that are growing.</div></div></div>
 <div class="row g-3 mb-4">
     <div class="col-sm-6">
         <a class="tile" href="{% url 'feedback_inbox' %}?urgency=EMERGENCY">
             <span class="tile-icon bad"><i class="bi bi-exclamation-octagon"></i></span>
-            <span><span class="tile-num d-block">{{ urgent_count }}</span><span class="tile-label">Urgent or high-priority this week</span></span>
+            <span><span class="tile-num d-block">{{ urgent_count }}</span><span class="tile-label">Urgent complaints (last 7 days)</span></span>
             <i class="bi bi-chevron-right ms-auto text-muted"></i>
         </a>
     </div>
     <div class="col-sm-6">
         <a class="tile" href="{% url 'feedback_inbox' %}?status=pending">
             <span class="tile-icon blue"><i class="bi bi-clipboard-check"></i></span>
-            <span><span class="tile-num d-block">{{ review_count }}</span><span class="tile-label">Awaiting staff verification</span></span>
+            <span><span class="tile-num d-block">{{ review_count }}</span><span class="tile-label">Waiting for staff to verify</span></span>
             <i class="bi bi-chevron-right ms-auto text-muted"></i>
         </a>
     </div>
@@ -46,6 +53,7 @@
 
 {% include "partials/_rising.html" %}
 
+<div class="sec-head"><span class="sec-num">3</span><div><h3>What are people complaining about, and where?</h3><div class="sec-sub">Top issues and busiest wards for the last 7 days. Darker areas on the map mean more complaints.</div></div></div>
 <div class="row g-4 mb-4">
     <div class="col-lg-7">
         <div class="simple-card h-100 mb-0">
@@ -59,7 +67,7 @@
     <div class="col-lg-5 d-flex flex-column gap-4">
         <div class="simple-card mb-0">
             <div class="simple-card-header">
-                <h3 class="simple-card-title"><i class="bi bi-list-ol"></i> Top issues this week</h3>
+                <h3 class="simple-card-title"><i class="bi bi-list-ol"></i> Most common issues (last 7 days)</h3>
             </div>
             <div class="brk">
                 {% for c in top_categories %}
@@ -72,7 +80,7 @@
         </div>
         <div class="simple-card mb-0">
             <div class="simple-card-header">
-                <h3 class="simple-card-title"><i class="bi bi-pin-map"></i> Busiest wards this week</h3>
+                <h3 class="simple-card-title"><i class="bi bi-pin-map"></i> Wards with most complaints (last 7 days)</h3>
             </div>
             <div class="d-flex flex-column gap-2">
                 {% for w in top_wards %}

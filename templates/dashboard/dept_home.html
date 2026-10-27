@@ -16,8 +16,14 @@
     {% include "partials/_window.html" %}
 </div>
 
+<div class="summary-banner">
+    <i class="bi bi-chat-square-text"></i>
+    <div><div class="summary-kicker">In short</div><p>{{ headline }}</p></div>
+</div>
+<div class="sec-head"><span class="sec-num">1</span><div><h3>How many complaints are coming in?</h3><div class="sec-sub">Complaints routed to your department, compared with the period just before.</div></div></div>
 {% include "partials/_hero.html" %}
 
+<div class="sec-head"><span class="sec-num">2</span><div><h3>What needs action now?</h3><div class="sec-sub">Urgent complaints, items waiting for your check, and issues that are growing.</div></div></div>
 <div class="row g-3 mb-4">
     <div class="col-md-4">
         <a class="tile" href="{% url 'feedback_inbox' %}?window={{ window }}">
@@ -34,13 +40,14 @@
     <div class="col-md-4">
         <a class="tile" href="{% url 'feedback_inbox' %}?status=pending">
             <span class="tile-icon mid"><i class="bi bi-clipboard-check"></i></span>
-            <span><span class="tile-num d-block">{{ review_count }}</span><span class="tile-label">Awaiting your verification</span></span>
+            <span><span class="tile-num d-block">{{ review_count }}</span><span class="tile-label">Waiting for you to verify</span></span>
         </a>
     </div>
 </div>
 
 {% include "partials/_rising.html" %}
 
+<div class="sec-head"><span class="sec-num">3</span><div><h3>What are people reporting, and where?</h3><div class="sec-sub">Issue types for the selected period, and the wards they come from.</div></div></div>
 <div class="row g-4 mb-4">
     <div class="col-lg-6">
         <div class="simple-card h-100 mb-0">
